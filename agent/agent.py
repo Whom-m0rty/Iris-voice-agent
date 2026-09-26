@@ -334,7 +334,10 @@ class Agent:
             br = el.ctrl.BoundingRectangle
             rect = (br.left, br.top, br.right, br.bottom)
             short = el.name[:40] or el.kind
-            if self._risky(description) or ALWAYS_CONFIRM.search(goal):
+            # typing is judged as an action; the words typed ("please send me...") are not an action
+            judged = f"type text into {el.label}" if (pending_text or pending_secret) else description
+            step_intent = goal if not (pending_text or pending_secret) else ""
+            if self._risky(judged) or ALWAYS_CONFIRM.search(step_intent):
                 self._show_target(rect, "confirm", short)
                 if not self._approved(description):
                     self._emit(kind="target_clear")
@@ -397,7 +400,9 @@ class Agent:
         sx, sy = int(left + act["x"] / scale), int(top + act["y"] / scale)
         rect = (sx - 28, sy - 28, sx + 28, sy + 28)
         short = target[:40]
-        if self._risky(description) or ALWAYS_CONFIRM.search(goal):
+        typing = bool(secret) or a == "type"
+        judged = f"type text into {target}" if typing else description
+        if self._risky(judged) or (not typing and ALWAYS_CONFIRM.search(goal)):
             self._show_target(rect, "confirm", short)
             if not self._approved(description):
                 self._declined = description
@@ -405,10 +410,17 @@ class Agent:
                 return None
         if self.cancel.is_set():
             return None
+        snapped = screen.snap_to_control(window, sx, sy) if a == "click" else None
+        if snapped is not None:
+            br = snapped.ctrl.BoundingRectangle
+            rect = (br.left, br.top, br.right, br.bottom)
         self._show_target(rect, "vision", f"{short}  {ms / 1000:.1f} s")
         self._show_click(rect, "vision")
         try:
-            screen.click_at(origin, act["x"], act["y"], window)
+            if snapped is not None:
+                screen.click(snapped)         # the real control under Claude's point: exact
+            else:
+                screen.click_at(origin, act["x"], act["y"], window)
         except screen.NotOnTop:
             self.say("Something is covering that window, so I did not click.")
             return None

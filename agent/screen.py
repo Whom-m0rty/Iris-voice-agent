@@ -55,13 +55,29 @@ def foreground() -> auto.WindowControl:
 IGNORED_WINDOWS = re.compile(r"^(Program Manager|Iris — observer|.*overlay.*|MSCTFIME UI|Default IME)$", re.I)
 
 
+def app_windows() -> list:
+    """Visible top-level windows a person works in: not notifications, tooltips or toolbars
+    (Telegram's pop-up notification is a 320x80 window titled 'TelegramDesktop')."""
+    out = []
+    for w in auto.GetRootControl().GetChildren():
+        try:
+            name = (w.Name or "").strip()
+            r = w.BoundingRectangle
+            if (not name or w.IsOffscreen or IGNORED_WINDOWS.match(name)
+                    or r.width() < 400 or r.height() < 250 or "Tool" in (w.ClassName or "")):
+                continue
+            out.append(w)
+        except Exception:
+            continue
+    return out
+
+
 def open_windows() -> list[str]:
     """Titles of the visible top-level windows, for the voice LLM to pick from."""
     titles = []
-    for w in auto.GetRootControl().GetChildren():
-        name = (w.Name or "").strip()
-        if name and not w.IsOffscreen and not IGNORED_WINDOWS.match(name) and name not in titles:
-            titles.append(name)
+    for w in app_windows():
+        if w.Name.strip() not in titles:
+            titles.append(w.Name.strip())
     return titles
 
 
@@ -77,9 +93,9 @@ def resolve_window(name: str, timeout: float = 2) -> auto.WindowControl | None:
     for x in list(words):
         words |= aliases.get(x, set())
     # apps whose title is the open document or chat (Telegram shows the chat name): match the process
-    for w in auto.GetRootControl().GetChildren():
-        if (w.Name or "").strip() and not w.IsOffscreen and _process_name(w.ProcessId) in words:
-            return w
+    by_process = [w for w in app_windows() if _process_name(w.ProcessId) in words]
+    if by_process:
+        return by_process[0]                  # topmost window of that app
     best, score = None, 0
     for title in open_windows():
         s = len(words & set(re.findall(r"\w+", title.lower())))
@@ -105,8 +121,17 @@ def _process_name(pid: int) -> str:
 
 
 def find_window(title_re: str, timeout: float = 5) -> auto.WindowControl | None:
-    w = auto.WindowControl(searchDepth=1, RegexName=f".*({title_re}).*")
-    return w if w.Exists(timeout) else None
+    """The largest app window whose title matches (never a notification or tooltip)."""
+    import time
+    pattern = re.compile(f".*({title_re}).*", re.I)
+    end = time.perf_counter() + timeout
+    while True:
+        hits = [w for w in app_windows() if pattern.match(w.Name or "")]
+        if hits:
+            return hits[0]                    # topmost; "largest" once picked the user's other Telegram
+        if time.perf_counter() >= end:
+            return None
+        time.sleep(0.2)
 
 
 BROWSER_CLASSES = {"Chrome_WidgetWin_1"}      # Edge, Chrome and Electron apps
@@ -334,7 +359,7 @@ def bring_to_front(window: auto.Control, timeout: float = 1.5) -> bool:
     return False
 
 
-def capture(window: auto.Control, max_w: int = 1280) -> tuple[str, tuple[int, int, float]]:
+def capture(window: auto.Control, max_w: int = 1568) -> tuple[str, tuple[int, int, float]]:
     """PNG of the window as base64, plus (left, top, scale) to map image coords back to screen.
     Refuses when the window is not in front: the grab would show someone else's pixels."""
     if not bring_to_front(window):
@@ -347,6 +372,27 @@ def capture(window: auto.Control, max_w: int = 1280) -> tuple[str, tuple[int, in
     buf = io.BytesIO()
     img.save(buf, "PNG")
     return base64.b64encode(buf.getvalue()).decode(), (r.left, r.top, scale)
+
+
+def snap_to_control(window, x: int, y: int, radius: int = 30):
+    """The clickable control under a screen point, or the nearest one within `radius` px.
+    A vision model's point on a small icon is often a few pixels off; the control is not."""
+    best, best_d = None, radius + 1
+    for el in _snapshot(window).elements.values():
+        if el.typeable:
+            continue
+        try:
+            r = el.ctrl.BoundingRectangle
+        except Exception:
+            continue
+        if r.width() <= 0 or r.height() <= 0 or r.width() * r.height() > 250_000:
+            continue                          # skip huge containers
+        dx = max(r.left - x, 0, x - r.right)
+        dy = max(r.top - y, 0, y - r.bottom)
+        d = (dx * dx + dy * dy) ** 0.5
+        if d < best_d or (d == best_d == 0 and best and r.width() * r.height() < best[1]):
+            best, best_d = (el, r.width() * r.height()), d
+    return best[0] if best else None
 
 
 def click_at(origin: tuple[int, int, float], x: int, y: int, window: auto.Control | None = None) -> None:
