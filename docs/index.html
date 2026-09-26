@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Iris — a voice that uses your computer for you</title>
+<title>Iris: a voice that uses your computer for you</title>
 <meta name="description" content="Iris is a voice agent for Windows. Say what you want; it does it in any app, tells you what happened, and asks before anything that can't be undone. Built on AssemblyAI.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -38,6 +38,11 @@
   a { color: var(--iris); text-underline-offset: 3px; }
   h1, h2, h3, .errand q { text-wrap: balance; }
   :focus-visible { outline: 3px solid var(--iris); outline-offset: 3px; border-radius: 6px; }
+  ::selection { background: var(--iris); color: var(--surface); }
+  .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .skip { position: absolute; left: 16px; top: -80px; z-index: 10; background: var(--ink); color: var(--bg);
+          padding: 12px 18px; border-radius: 12px; font-weight: 600; text-decoration: none; }
+  .skip:focus { top: 12px; }
   code, pre { font-family: var(--mono); }
   .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
   @media (min-width: 720px) { .wrap { padding: 0 28px; } }
@@ -48,7 +53,7 @@
           background: radial-gradient(circle, var(--ink) 0 26%, var(--iris) 27% 62%, var(--iris-wash) 63%); }
   .top b { font-size: 22px; font-weight: 800; }
   .top nav { margin-left: auto; display: flex; gap: 22px; font-size: 16px; }
-  .top nav a { color: var(--soft); text-decoration: none; }
+  .top nav a { color: var(--soft); text-decoration: none; display: inline-flex; align-items: center; min-height: 44px; }
   .top nav a:hover { color: var(--ink); }
   @media (max-width: 760px) { .top nav a:not(.gh) { display: none; } }
 
@@ -64,8 +69,8 @@
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn.main { color: #0b0e1c; } }
   :root[data-theme="dark"] .btn.main { color: #0b0e1c; }
 
-  .talk { background: var(--surface); border-radius: 28px; padding: 26px 24px 20px;
-          box-shadow: 0 30px 60px -30px rgba(20, 20, 60, .35); }
+  .talk { margin: 0; background: var(--surface); border-radius: 28px; padding: 26px 24px 20px;
+          box-shadow: 0 30px 60px -30px rgba(0, 0, 0, .28); }
   .talk ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
   .line { display: grid; grid-template-columns: 56px 1fr; gap: 12px; align-items: start; }
   .who { font-size: 15px; font-weight: 600; color: var(--soft); padding-top: 4px; }
@@ -75,6 +80,7 @@
   .iris.ask .said { background: transparent; box-shadow: inset 0 0 0 3px var(--ask); }
   .did { padding-left: 68px; font-size: 15px; color: var(--soft); display: flex; align-items: center; gap: 8px; margin-top: -6px; }
   .did i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .did i + i { margin-left: -4px; }
   @media (max-width: 520px) {
     .talk { padding: 20px 16px 16px; }
     .line { grid-template-columns: 1fr; gap: 4px; }
@@ -82,9 +88,10 @@
     .said { font-size: 19px; }
     .did { padding-left: 4px; margin-top: 0; }
   }
-  .talk .foot { display: flex; justify-content: space-between; align-items: center; margin-top: 18px;
+  .talk .foot { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 18px;
                 font-size: 15px; color: var(--soft); }
-  .replay { font: inherit; font-weight: 600; color: var(--iris); background: none; border: 0; cursor: pointer; padding: 6px 0; }
+  .talk .foot span { max-width: 36ch; }
+  .replay { white-space: nowrap; flex: none; font: inherit; font-weight: 600; color: var(--iris); background: none; border: 0; cursor: pointer; padding: 6px 0; }
   .wave { display: inline-flex; gap: 3px; height: 16px; align-items: center; vertical-align: -2px; margin-left: 8px; }
   .wave span { width: 3px; height: 100%; background: currentColor; border-radius: 2px; transform-origin: center; }
   /* the one piece of motion: the conversation plays once, then stays */
@@ -103,11 +110,14 @@
   h2 { font-size: clamp(30px, 4vw, 46px); line-height: 1.1; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 16px; max-width: 20em; }
   .sub { color: var(--soft); max-width: 40em; margin: 0 0 36px; }
 
-  /* video */
+  /* video: a slim note until the recording is in, then the 16:9 player (drop "pending") */
   .video { aspect-ratio: 16 / 9; border-radius: var(--r); background: var(--ink); color: var(--bg);
            display: grid; place-items: center; overflow: hidden; }
   .video iframe { width: 100%; height: 100%; border: 0; }
-  .video p { margin: 0; padding: 20px; text-align: center; font-size: 20px; }
+  .video.pending { aspect-ratio: auto; display: flex; align-items: center; gap: 14px; place-items: initial;
+                   background: var(--surface); color: var(--soft); padding: 18px 22px; font-size: 17px; max-width: 760px; }
+  .video.pending p { margin: 0; max-width: 60ch; }
+  .video.pending b { color: var(--ink); }
 
   /* three errands: each told as what you say, and who did the work */
   .errands { display: grid; gap: 20px; }
@@ -126,13 +136,16 @@
   .flow { width: 100%; height: auto; display: block; background: var(--surface); border-radius: var(--r); padding: 12px; }
   .flow text { font-family: var(--text); fill: var(--ink); }
   .flow .soft { fill: var(--soft); }
-  .flow .box { fill: var(--surface); stroke: var(--rule); stroke-width: 2; }
+  .flow .box { fill: var(--surface); stroke: color-mix(in srgb, var(--soft) 62%, var(--surface)); stroke-width: 2; }
   .flow .arrows { stroke: var(--soft); }
   .flow .arrowhead { fill: var(--soft); }
   .flow .s-aai { stroke: var(--iris); } .flow .s-api { stroke: var(--api); } .flow .s-kev { stroke: var(--kev); } .flow .s-ask { stroke: var(--ask); }
   ol.path { display: none; margin: 0; padding: 0 0 0 1.4em; }
   ol.path li { margin-bottom: 12px; } ol.path li span { display: block; color: var(--soft); font-size: 17px; }
-  @media (max-width: 720px) { .flow { display: none; } ol.path { display: block; } }
+  ol.path i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; margin-left: 8px; vertical-align: 1px; }
+  .c-aai { background: var(--iris); }
+  /* below 900px the diagram's labels would shrink under 12px: the list says the same */
+  @media (max-width: 900px) { .flow { display: none; } ol.path { display: block; } }
   .parts { display: grid; gap: 28px 40px; margin-top: 44px; }
   @media (min-width: 760px) { .parts { grid-template-columns: 1fr 1fr; } }
   .parts h3 { font-size: 22px; margin: 0 0 6px; }
@@ -146,10 +159,11 @@
   .swap p { margin: 0 0 6px; color: var(--soft); font-size: 17px; }
   .swap p:first-of-type { color: var(--ink); font-weight: 600; }
   pre { background: var(--code); border-radius: 14px; padding: 16px 18px; overflow-x: auto; font-size: 15px; line-height: 1.55; margin: 20px 0 0; }
+  @media (max-width: 720px) { ol.install pre { white-space: pre-wrap; overflow-wrap: anywhere; } }
   :not(pre) > code { background: var(--code); padding: 1px 6px; border-radius: 6px; font-size: .88em; }
 
   /* numbers */
-  .figures { display: grid; gap: 20px; }
+  .figures { display: grid; gap: 28px 20px; grid-template-columns: 1fr 1fr; }
   @media (min-width: 760px) { .figures { grid-template-columns: repeat(4, 1fr); } }
   .figure b { display: block; font-size: clamp(44px, 5.4vw, 64px); line-height: 1; font-weight: 800; letter-spacing: -0.03em; color: var(--iris); margin-bottom: 10px; }
   .figure span { color: var(--soft); font-size: 17px; }
@@ -161,6 +175,8 @@
 
   /* install */
   .need { background: var(--iris-wash); border-radius: var(--r); padding: 20px 22px; margin-bottom: 32px; }
+  .need p { margin: 0; max-width: 62ch; } .need p + p { margin-top: 10px; }
+  ol.install > li > div { max-width: 62ch; }
   ol.install { margin: 0; padding: 0; list-style: none; counter-reset: s; display: grid; gap: 26px; }
   ol.install > li { counter-increment: s; display: grid; grid-template-columns: 48px 1fr; gap: 16px; }
   ol.install > li::before { content: counter(s); width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
@@ -170,30 +186,32 @@
 
 
   footer { padding: 40px 0 64px; color: var(--soft); font-size: 16px; }
-  footer p { margin: 0 0 8px; }
+  footer p { margin: 0 0 8px; max-width: 65ch; }
 </style>
 </head>
 <body>
 <script>document.documentElement.classList.add("js")</script>
+<a class="skip" href="#main">Skip to the content</a>
 <div class="wrap">
   <header class="top">
     <div class="mark" aria-hidden="true"></div><b>Iris</b>
     <nav aria-label="Sections">
-      <a href="#how">How it works</a><a href="#swap">Swap parts</a><a href="#trust">Trust</a><a href="#try">Install</a>
+      <a href="#how">How it works</a><a href="#trust">Trust</a><a href="#swap">Swap parts</a><a href="#try">Install</a>
       <a class="gh" href="https://github.com/Whom-m0rty/Iris-voice-agent">GitHub</a>
     </nav>
   </header>
 
-  <main>
+  <main id="main">
   <div class="hero">
     <div>
       <h1>A voice that uses your computer for you.</h1>
-      <p class="lead">Say what you want, in plain words. Iris does it in any app on your Windows PC, tells you
-        what happened, and asks before anything that can't be undone. Made for people who can't see the
+      <p class="lead">Say what you want, in plain words. Iris hears it through AssemblyAI, does it in any app on
+        your Windows PC, tells you what happened, and asks before anything that can't be undone. Made for people who can't see the
         screen, and for anyone the screen confuses.</p>
       <div class="cta">
         <a class="btn main" href="#try">Install on Windows</a>
-        <a class="btn" href="#demo">Watch the demo</a>
+        <!-- once the video is embedded below: "Watch the demo", href="#demo" -->
+        <a class="btn" href="#how">See how it works</a>
       </div>
     </div>
 
@@ -201,19 +219,20 @@
       <ol id="talk">
         <li class="line you"><span class="who">You</span><span class="said">Put vitamin D in my basket.</span></li>
         <li class="line iris"><span class="who">Iris</span><span class="said">Done. One bottle of vitamin D3 is in your basket.<span class="wave" aria-hidden="true"><span></span><span></span><span></span></span></span></li>
-        <li class="did"><i class="c-kev"></i>Kev and Claude vision clicked on amazon.it</li>
+        <li class="did"><i class="c-kev"></i><i class="c-vision"></i><span>Clicked on amazon.it: Kev, the fast local model, then Claude vision</span></li>
         <li class="line you"><span class="who">You</span><span class="said">Now check out.</span></li>
-        <li class="line iris ask"><span class="who">Iris</span><span class="said">Check out and pay for your basket? It costs €32.86.<span class="wave" aria-hidden="true"><span></span><span></span><span></span></span></span></li>
+        <li class="line iris ask"><span class="who">Iris</span><span class="said"><span class="vh">Asks before acting: </span>Check out and pay for your basket? It costs €32.86.<span class="wave" aria-hidden="true"><span></span><span></span><span></span></span></span></li>
         <li class="line you"><span class="who">You</span><span class="said">No, wait.</span></li>
         <li class="line iris"><span class="who">Iris</span><span class="said">Okay. I didn't buy anything.<span class="wave" aria-hidden="true"><span></span><span></span><span></span></span></span></li>
       </ol>
-      <div class="foot"><span>The Amazon errand from the demo</span><button class="replay" id="replay" type="button">Play again</button></div>
+      <figcaption class="foot"><span>The Amazon errand from the demo. The red outline is Iris asking first.</span><button class="replay" id="replay" type="button">Play again</button></figcaption>
     </figure>
   </div>
 
-  <div class="video" id="demo">
-    <!-- VIDEO: replace this paragraph with the YouTube embed once the demo is recorded -->
-    <p>The demo video is coming with the submission.</p>
+  <div class="video pending" id="demo">
+    <!-- VIDEO: once recorded, remove "pending" and replace this paragraph with the YouTube iframe -->
+    <p><b>The demo video arrives with the submission on 30 September.</b> Until then, the conversation above is a real
+      Amazon run, shortened to the key lines.</p>
   </div>
 
   <section>
@@ -275,10 +294,10 @@
     </svg>
     <ol class="path">
       <li>You speak<span>Any English. Pauses mid-sentence are fine.</span></li>
-      <li>AssemblyAI hears<span>Streaming speech-to-text.</span></li>
+      <li>AssemblyAI hears<i class="c-aai" aria-hidden="true"></i><span>Streaming speech-to-text.</span></li>
       <li>Claude plans<span>What to say and which tool to use.</span></li>
-      <li>An API, or the screen<span>Gmail and web pages directly. Otherwise Kev (~230 ms) and Claude vision click in the app.</span></li>
-      <li>Asks first<span>Anything that sends, pays or deletes waits for your spoken yes.</span></li>
+      <li>An API, or the screen<i class="c-api" aria-hidden="true"></i><i class="c-kev" aria-hidden="true"></i><i class="c-vision" aria-hidden="true"></i><span>Gmail and web pages directly. Otherwise Kev (~230 ms) and Claude vision click in the app.</span></li>
+      <li>Asks first<i class="c-ask" aria-hidden="true"></i><span>Anything that sends, pays or deletes waits for your spoken yes.</span></li>
     </ol>
     <div class="parts">
       <div><h3>Ears: AssemblyAI</h3><p>Universal-Streaming speech-to-text. Short pauses are merged into one turn,
@@ -294,18 +313,6 @@
     </div>
   </section>
 
-  <section id="swap">
-    <h2>Swap any part with one line</h2>
-    <p class="sub">No lock-in to one model vendor. Each part is a setting in <code>.env</code>.</p>
-    <div class="swap">
-      <div><h3>Ears</h3><p>AssemblyAI Streaming STT</p><p>AssemblyAI Voice Agent API</p></div>
-      <div><h3>Brain</h3><p>Claude</p><p>Any model on the AssemblyAI LLM Gateway</p><p>Any OpenAI-compatible API</p></div>
-      <div><h3>Decisions</h3><p>Kev, local on your GPU</p><p>Jev by TypeSafe, in the cloud</p></div>
-    </div>
-    <pre><code>BRAIN_BACKEND=openai        # AssemblyAI LLM Gateway
-BRAIN_MODEL=gemini-3.5-flash
-SYSTEMONE_URL=https://...   # Jev instead of Kev</code></pre>
-  </section>
 
   <section id="trust">
     <h2>Why you can trust it with your computer</h2>
@@ -324,23 +331,38 @@ SYSTEMONE_URL=https://...   # Jev instead of Kev</code></pre>
     </ul>
   </section>
 
+  <section id="swap">
+    <h2>Swap any part with one line</h2>
+    <p class="sub">No lock-in to one model vendor. Each part is a setting in <code>.env</code>.</p>
+    <div class="swap">
+      <div><h3>Ears</h3><p>AssemblyAI Streaming STT</p><p>AssemblyAI Voice Agent API</p></div>
+      <div><h3>Brain</h3><p>Claude</p><p>Any model on the AssemblyAI LLM Gateway</p><p>Any OpenAI-compatible API</p></div>
+      <div><h3>Decisions</h3><p>Kev, local on your GPU</p><p>Jev by TypeSafe, in the cloud</p></div>
+    </div>
+    <pre tabindex="0"><code>BRAIN_BACKEND=openai        # AssemblyAI LLM Gateway
+BRAIN_MODEL=gemini-3.5-flash
+SYSTEMONE_URL=https://...   # Jev instead of Kev</code></pre>
+  </section>
+
   <section id="try">
     <h2>Install on your PC</h2>
     <p class="sub">Iris is a Windows program, not a website: it works on your screen, in your apps. Setup takes
       about 15 minutes, most of it a one-time download of the local model.</p>
-    <div class="need"><b>You need</b> Windows 10 or 11, an NVIDIA GPU with about 10 GB free (for Kev), a microphone
+    <div class="need"><p><b>You need</b> Windows 10 or 11, an NVIDIA GPU with about 10 GB free (for Kev), a microphone
       and headphones, a free <a href="https://www.assemblyai.com/dashboard/signup">AssemblyAI key</a>, and Claude
-      (a Claude Code login or an Anthropic API key).</div>
+      (a Claude Code login or an Anthropic API key).</p>
+      <p><b>Who sets it up</b> Someone comfortable with a terminal, once. After that, the person using Iris only
+      needs their voice.</p></div>
     <ol class="install">
       <li><div>Get the code.
-        <pre><code>git clone https://github.com/Whom-m0rty/Iris-voice-agent
+        <pre tabindex="0"><code>git clone https://github.com/Whom-m0rty/Iris-voice-agent
 cd Iris-voice-agent</code></pre></div></li>
       <li><div>Install. This downloads Kev and the Python packages, then asks for your keys.
-        <pre><code>powershell -ExecutionPolicy Bypass -File install.ps1</code></pre></div></li>
-      <li><div>Optional: connect Gmail with <code>python voice\mcp_servers\mail.py login</code>, and list apps Iris
-        must never touch in <code>protected_apps.txt</code>.</div></li>
+        <pre tabindex="0"><code>powershell -ExecutionPolicy Bypass -File install.ps1</code></pre></div></li>
+      <li><div>Optional: connect Gmail, and list apps Iris must never touch in <code>protected_apps.txt</code>.
+        <pre tabindex="0"><code>python voice\mcp_servers\mail.py login</code></pre></div></li>
       <li><div>Start it, put on headphones, and talk.
-        <pre><code>powershell -ExecutionPolicy Bypass -File run_demo.ps1</code></pre>
+        <pre tabindex="0"><code>powershell -ExecutionPolicy Bypass -File run_demo.ps1</code></pre>
         Try “What's the newest file in my Downloads folder?” or “Find a video on how to bake bread and play it.”</div></li>
     </ol>
   </section>
