@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Iris — a voice that uses your computer for you</title>
+<meta name="description" content="Iris is a voice agent for Windows. Say what you want; it does it in any app, tells you what happened, and asks before anything that can't be undone. Built on AssemblyAI.">
+<style>
+  :root {
+    --bg: #fbfaf7; --panel: #ffffff; --ink: #1b1c20; --muted: #5d6070; --line: #e6e3dc;
+    --accent: #c9623f; --accent-soft: #fbeee8; --kev: #1e9e5a; --vision: #7b45e0; --confirm: #d23b2c;
+    --mcp: #2677c9; --code: #f3f1ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111216; --panel: #191a20; --ink: #eeeef2; --muted: #a3a6b5; --line: #2b2d38;
+            --accent: #e0835f; --accent-soft: #2a1c16; --code: #1f2028; }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 17px/1.6 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  a { color: var(--accent); }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+  header.top { display: flex; align-items: center; gap: 12px; padding: 18px 0; }
+  .logo { width: 30px; height: 30px; border-radius: 50%;
+          background: conic-gradient(#d97757, #f4a261, #b388ff, #7aa2f7, #d97757); }
+  header.top b { font-size: 19px; }
+  header.top nav { margin-left: auto; display: flex; gap: 18px; font-size: 15px; }
+  header.top nav a { color: var(--muted); text-decoration: none; }
+  .hero { padding: 48px 0 36px; }
+  .hero h1 { font-size: clamp(34px, 5.4vw, 58px); line-height: 1.08; margin: 0 0 18px; letter-spacing: -0.02em; }
+  .hero h1 em { font-style: normal; color: var(--accent); }
+  .hero p.lead { font-size: clamp(18px, 2.2vw, 21px); color: var(--muted); max-width: 720px; margin: 0 0 26px; }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 12px;
+         font-weight: 600; text-decoration: none; border: 1px solid var(--line); color: var(--ink); background: var(--panel); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .video { margin: 34px 0 0; aspect-ratio: 16 / 9; border-radius: 18px; border: 1px solid var(--line);
+           background: var(--panel); display: grid; place-items: center; overflow: hidden; }
+  .video iframe { width: 100%; height: 100%; border: 0; }
+  .video .soon { color: var(--muted); text-align: center; padding: 20px; }
+  section { padding: 56px 0; border-top: 1px solid var(--line); }
+  section h2 { font-size: clamp(26px, 3.4vw, 36px); margin: 0 0 12px; letter-spacing: -0.01em; }
+  section p.sub { color: var(--muted); max-width: 760px; margin: 0 0 28px; }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; }
+  .card h3 { margin: 0 0 6px; font-size: 19px; }
+  .card p { margin: 0; color: var(--muted); font-size: 16px; }
+  .quote { font-size: 18px; margin: 0 0 10px; }
+  .quote b { color: var(--accent); }
+  .pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px;
+          color: #fff; margin-right: 6px; vertical-align: 2px; }
+  .p-kev { background: var(--kev); } .p-vision { background: var(--vision); } .p-mcp { background: var(--mcp); }
+  .p-confirm { background: var(--confirm); }
+  .flow { width: 100%; height: auto; display: block; }
+  .flow text { font-family: "Segoe UI", system-ui, sans-serif; fill: var(--ink); }
+  .flow .muted { fill: var(--muted); }
+  .flow .box { fill: var(--panel); stroke: var(--line); }
+  .numbers { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+  .num { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; }
+  .num b { display: block; font-size: 34px; line-height: 1.1; }
+  .num span { color: var(--muted); font-size: 15px; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; margin-top: 18px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  pre { background: var(--code); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
+        overflow-x: auto; font-size: 14px; line-height: 1.5; }
+  code { font-family: "Cascadia Code", Consolas, monospace; }
+  ol.steps { padding-left: 22px; } ol.steps li { margin: 0 0 14px; }
+  .note { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; border-radius: 0 12px 12px 0; }
+  ul.honest li { margin-bottom: 8px; }
+  footer { padding: 40px 0 60px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
+  ol.flow-steps { display: none; list-style: none; padding: 0; margin: 0; }
+  ol.flow-steps li { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+                     padding: 10px 14px; margin-bottom: 8px; }
+  ol.flow-steps li b { display: block; }
+  ol.flow-steps li span { color: var(--muted); font-size: 15px; }
+  @media (max-width: 720px) { .flow { display: none; } ol.flow-steps { display: block; } }
+  @media (max-width: 640px) { header.top nav { display: none; } body { font-size: 16px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="logo" aria-hidden="true"></div><b>Iris</b>
+    <nav>
+      <a href="#how">How it works</a><a href="#trust">Trust</a><a href="#try">Try it</a>
+      <a href="https://github.com/Whom-m0rty/Iris-voice-agent">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <h1>A voice that uses your computer <em>for you</em>.</h1>
+    <p class="lead">Iris is a voice agent for Windows. Say what you want: it reads your mail, replies on
+      Telegram, shops on Amazon, in the apps you already use. It tells you what happened, and it asks
+      before anything that can't be undone. Made for people who can't see the screen, and for anyone
+      the screen confuses.</p>
+    <div class="cta">
+      <a class="btn primary" href="#try">Try it on your PC</a>
+      <a class="btn" href="#demo">Watch the demo</a>
+      <a class="btn" href="https://github.com/Whom-m0rty/Iris-voice-agent">Source on GitHub</a>
+    </div>
+    <div class="video" id="demo">
+      <!-- VIDEO: replace this div's content with the YouTube embed once the demo is recorded -->
+      <div class="soon">▶ Demo video — coming with the submission</div>
+    </div>
+  </div>
+
+  <section>
+    <h2>Screen readers stop where apps stop labelling their buttons.</h2>
+    <p class="sub">A screen reader reads the accessibility tree. When an app draws its own icons, it hears
+      “button, button, button”. Iris reads the tree when it is there, and looks at the pixels when it
+      isn't. And it doesn't need you to learn keyboard shortcuts: you just say what you want.</p>
+    <div class="grid">
+      <div class="card">
+        <p class="quote">“Did my grandson write to me?”</p>
+        <p><span class="pill p-mcp">API</span>Reads the email out loud, takes the reply you dictate, reads
+          it back and sends only after your yes.</p>
+      </div>
+      <div class="card">
+        <p class="quote">“Tell Peter on Telegram I'm running late.”</p>
+        <p><span class="pill p-kev">Kev</span><span class="pill p-vision">Claude</span>Types in the chat; the
+          send button has no label, so vision finds it. It checks the message really left.</p>
+      </div>
+      <div class="card">
+        <p class="quote">“Put vitamin D in my basket. Now check out.”</p>
+        <p><span class="pill p-confirm">Asks first</span>“Check out and pay for your basket? It costs
+          €32.86.” — <b>“No, wait.”</b> Nothing is bought, and it doesn't try again.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <h2>How it works</h2>
+    <p class="sub">Four parts. The fast one does almost all the work; the slow one only steps in when it has to.</p>
+    <svg class="flow" viewBox="0 0 1000 330" role="img" aria-label="Voice goes to AssemblyAI speech-to-text, then to Claude which plans; a direct API or the screen agent acts; a safety gate asks before risky actions; a neural voice answers.">
+      <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8a8d9c"/></marker></defs>
+      <g stroke="#8a8d9c" stroke-width="2" fill="none" marker-end="url(#a)">
+        <path d="M150,70 H215"/><path d="M425,70 H490"/><path d="M600,105 V150 H330 V185"/><path d="M600,105 V150 H740 V185"/>
+        <path d="M740,265 V295 H600"/><path d="M330,265 V295 H470"/>
+      </g>
+      <rect class="box" x="20" y="35" width="130" height="70" rx="14"/><text x="85" y="66" text-anchor="middle" font-size="17" font-weight="600">You speak</text><text x="85" y="88" text-anchor="middle" font-size="13" class="muted">any English</text>
+      <rect class="box" x="220" y="35" width="205" height="70" rx="14" stroke="#c9623f"/><text x="322" y="63" text-anchor="middle" font-size="16" font-weight="600">AssemblyAI</text><text x="322" y="85" text-anchor="middle" font-size="13" class="muted">streaming speech-to-text</text>
+      <rect class="box" x="495" y="35" width="215" height="70" rx="14"/><text x="602" y="63" text-anchor="middle" font-size="16" font-weight="600">Claude plans</text><text x="602" y="85" text-anchor="middle" font-size="13" class="muted">what to say, which tool</text>
+      <rect class="box" x="200" y="190" width="260" height="75" rx="14" stroke="#2677c9"/><text x="330" y="220" text-anchor="middle" font-size="16" font-weight="600">API first</text><text x="330" y="243" text-anchor="middle" font-size="13" class="muted">MCP tools (Gmail), browser jumps</text>
+      <rect class="box" x="560" y="190" width="360" height="75" rx="14" stroke="#1e9e5a"/><text x="740" y="216" text-anchor="middle" font-size="16" font-weight="600">Screen: Kev ~230 ms → Claude vision</text><text x="740" y="240" text-anchor="middle" font-size="13" class="muted">UI Automation first, pixels when the tree is blind</text>
+      <rect class="box" x="475" y="270" width="120" height="50" rx="12" stroke="#d23b2c"/><text x="535" y="300" text-anchor="middle" font-size="14" font-weight="600">Asks first</text>
+    </svg>
+    <ol class="flow-steps" aria-hidden="true">
+      <li><b>1 · You speak</b><span>any English, pauses are fine</span></li>
+      <li><b>2 · AssemblyAI hears</b><span>streaming speech-to-text</span></li>
+      <li><b>3 · Claude plans</b><span>what to say and which tool to use</span></li>
+      <li><b>4 · API first, or the screen</b><span>Gmail and browser jumps directly; otherwise Kev (~230 ms) and Claude vision click in the app</span></li>
+      <li><b>5 · Asks first</b><span>anything that sends, pays or deletes waits for your spoken yes</span></li>
+    </ol>
+    <div class="grid" style="margin-top:22px">
+      <div class="card"><h3>Ears — AssemblyAI</h3><p>Universal-Streaming speech-to-text. Short pauses are merged
+        into one turn, because people, older people especially, pause mid-sentence. A second backend runs
+        everything on AssemblyAI's Voice Agent API.</p></div>
+      <div class="card"><h3>Brain — Claude</h3><p>Turns what you said into a plan of small steps and picks the
+        tool: an API when one exists, the screen when it doesn't. Results are read from the screen, never guessed.</p></div>
+      <div class="card"><h3>Hands — Kev, then vision</h3><p>Kev, an open-weights decision model running locally,
+        picks each button from the accessibility tree in ~230 ms. When the tree has no answer, Claude looks at
+        the pixels, snapped to the real control or zoomed in for a second look.</p></div>
+      <div class="card"><h3>Guard — the spoken yes</h3><p>Anything that sends, pays, deletes or shares waits for
+        a yes, judged on your exact words. “Uh… who is it for?” gets the question again, not an action.</p></div>
+    </div>
+  </section>
+
+  <section id="trust">
+    <h2>Why you can trust it with your computer</h2>
+    <p class="sub">Measured on our benchmarks (in the repo, <code>bench/</code>). The test sets are ours;
+      we publish them so you can check.</p>
+    <div class="numbers">
+      <div class="num"><b>0</b><span>false “yes” in 60 spoken answers, including hesitations and traps</span></div>
+      <div class="num"><b>0</b><span>risky actions let through on a set the gate had never seen (40 actions)</span></div>
+      <div class="num"><b>14 / 14</b><span>clicks on unlabeled 14–40 px icons, maximised window, half of them only pixels</span></div>
+      <div class="num"><b>~230 ms</b><span>per decision by Kev on a local GPU; vision only when needed</span></div>
+    </div>
+    <table>
+      <tr><th>Rule</th><th>Why</th></tr>
+      <tr><td>Passwords never reach a model</td><td>Stored logins live in Windows Credential Manager; code types them into fields the OS marks as password fields.</td></tr>
+      <tr><td>A “no” ends the task</td><td>After you refuse, Iris may not look for another way in the same turn.</td></tr>
+      <tr><td>Only what the screen shows</td><td>“Sent” is said only when the text has left the input box; results are read from the screen.</td></tr>
+      <tr><td>Clicks stay in the right window</td><td>The target window is brought to the front and every pixel click is checked to land inside it.</td></tr>
+      <tr><td>Do-not-touch list</td><td>Apps you list (your banking app, your real account) are never read or clicked.</td></tr>
+    </table>
+  </section>
+
+  <section id="try">
+    <h2>Try it on your PC</h2>
+    <p class="sub">Iris is a Windows program, not a website: it works on your screen, in your apps. Setup takes about 15 minutes, most of it a one-time download of the local model.</p>
+    <div class="note"><b>You need:</b> Windows 10/11, an NVIDIA GPU with about 10 GB free (for Kev),
+      a microphone and headphones, a free <a href="https://www.assemblyai.com/dashboard/signup">AssemblyAI key</a>,
+      and Claude (a Claude Code login or an Anthropic API key).</div>
+    <ol class="steps">
+      <li>Get the code:
+        <pre><code>git clone https://github.com/Whom-m0rty/Iris-voice-agent
+cd Iris-voice-agent</code></pre></li>
+      <li>Install (downloads Kev and the Python packages, asks for your keys):
+        <pre><code>powershell -ExecutionPolicy Bypass -File install.ps1</code></pre></li>
+      <li>Optional: connect Gmail (<code>python voice\mcp_servers\mail.py login</code>) and list apps Iris must never touch in <code>protected_apps.txt</code>.</li>
+      <li>Start, put on headphones, and talk:
+        <pre><code>powershell -ExecutionPolicy Bypass -File run_demo.ps1</code></pre>
+        Try “What's the newest file in my Downloads folder?” or “Find a video on how to bake bread and play it.”</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>What it can't do yet</h2>
+    <ul class="honest">
+      <li>English only for now (the speech models understand 18 languages; the voice and prompts are English).</li>
+      <li>It works in apps that are already open; it doesn't launch programs yet.</li>
+      <li>Long flows on heavy websites are slow: each vision step takes 2–7 seconds.</li>
+      <li>It needs an NVIDIA GPU for Kev today; a cloud decision model (Jev) can replace it.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Built for the lablab.ai × AssemblyAI Voice Agent Hackathon, September 2026 · MIT license ·
+    Speech by <a href="https://www.assemblyai.com">AssemblyAI</a> · Decisions by
+    <a href="https://github.com/jaredpalmer/kev">Kev</a> · Planning and vision by Claude ·
+    <a href="https://github.com/Whom-m0rty/Iris-voice-agent">GitHub</a>
+  </footer>
+</div>
+</body>
+</html>
