@@ -38,6 +38,8 @@ ALWAYS_CONFIRM = re.compile(
     r"отправ|оплат|купи|заказ|удал|стер|форматир|подтверд|перев[её]д|опубликов|поделит|позвон|"
     r"приня|заблок|не сохран|выйти)", re.I)
 
+SEND_INTENT = re.compile(r"\b(send|post|submit|reply|отправ)", re.I)
+
 PASSWORD_WORDS = re.compile(r"pass(word|code|phrase)|\bpin\b|парол|пин-?код", re.I)
 
 RISK_Q = ("Is this action irreversible or does it send, pay, publish or delete something, "
@@ -97,6 +99,7 @@ class Agent:
         self.cancel = threading.Event()       # set by "stop": checked before every action
         self._declined: str | None = None     # set when the user said no to a vision action
         self.on_event: Callable[[dict], None] | None = None   # visuals: overlay and panel
+        self._typed = ""                      # last text typed in this plan, for the question
 
     # ---- visuals (no effect unless on_event is set) ------------------------------------
 
@@ -121,15 +124,24 @@ class Agent:
             l, t, r, b = rect
             self._emit(kind="click", x=(l + r) // 2, y=(t + b) // 2, via=via)
 
+    def _question(self, description: str) -> str:
+        """What a person would ask: 'Send "running late" to Maksim Okulov?', not 'About to click Button'."""
+        if self._typed and SEND_INTENT.search(f"{self.goal} {description}"):
+            where = re.sub(r"[\u200e\u200f]|\s*[–-]\s*\(\d+\)\s*$|\s*\(\d+\)\s*$", "",
+                           self._window_title or "").strip()
+            to = f" to {where}" if where and not re.search(r"telegram|chrome|edge|mail", where, re.I) else ""
+            return f'Send "{self._typed}"{to}?'
+        return f"About to {description}. Go ahead?"
+
     def _approved(self, description: str) -> bool:
-        question = f"About to {description}. Go ahead?"
+        question = self._question(description)
         for _ in range(3):
             answer = interpret_confirmation(self.confirm(question), question)
             if answer == "yes":
                 return True
             if answer == "no":
                 return False
-            question = f"Sorry, I did not get that. Should I {description}? Yes or no?"
+            question = f"{self._question(description)} Please say yes or no."
         return False
 
     def _risky(self, description: str) -> bool:
@@ -144,9 +156,12 @@ class Agent:
         {"do": "type the reply", "text": "..."}]. Kev does one action per item, no planning."""
         window = window or screen.foreground()
         steps: list[Step] = []
+        self._typed = ""
         for item in plan:
             if self.cancel.is_set():
                 break
+            if item.get("text"):
+                self._typed = item["text"]
             self.goal = goal
             r = self.run(item["do"], window, item.get("text"), max_actions=1, parent_goal=goal,
                          secret=item.get("secret"))
@@ -157,6 +172,14 @@ class Agent:
         if self.cancel.is_set():
             done = "; ".join(f"{s.action} {s.target}" for s in steps) or "nothing"
             return Result(False, f"Stopped because you asked. Done so far: {done}.", steps)
+        typed = [item["text"] for item in plan if item.get("text")]
+        if typed and SEND_INTENT.search(goal + " " + " ".join(i["do"] for i in plan)):
+            time.sleep(0.4)
+            shown = " ".join(screen.snapshot(window).texts)
+            stuck = [t for t in typed if t.strip() and t.strip()[:40] in shown and "contains:" in shown]
+            if stuck:
+                return Result(False, f"NOT sent: the text is still in the input box. Steps done: "
+                                     f"{'; '.join(f'{s.action} {s.target}' for s in steps)}.", steps)
         return Result(True, f"Done: {goal}.", steps)
 
     def run(self, goal: str, window=None, text: str | None = None,
@@ -253,7 +276,7 @@ class Agent:
             br = el.ctrl.BoundingRectangle
             rect = (br.left, br.top, br.right, br.bottom)
             short = el.name[:40] or el.kind
-            if self._risky(description):
+            if self._risky(description) or ALWAYS_CONFIRM.search(goal):
                 self._show_target(rect, "confirm", short)
                 if not self._approved(description):
                     self._emit(kind="target_clear")
@@ -306,7 +329,7 @@ class Agent:
         sx, sy = int(left + act["x"] / scale), int(top + act["y"] / scale)
         rect = (sx - 28, sy - 28, sx + 28, sy + 28)
         short = target[:40]
-        if self._risky(description):
+        if self._risky(description) or ALWAYS_CONFIRM.search(goal):
             self._show_target(rect, "confirm", short)
             if not self._approved(description):
                 self._declined = description

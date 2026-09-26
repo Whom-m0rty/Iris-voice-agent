@@ -67,7 +67,8 @@ When the user wants something done on the screen, call do_task with:
   {"do": "...", "text": "exact text to type"}. One click or one text entry per step.
   The app is already open on screen: never add a step to open, launch or switch to it.
   Name the control to use, e.g. "press the 7 key", "click the Reply button",
-  "type the message into the message box". On keypads (calculator, phone dialer) press
+  "type the message into the message box". To send, the last step is "click the Send
+  button" - never press Enter. On keypads (calculator, phone dialer) press
   every key as its own step: "press the digit 1", "press the digit 2", "press multiply".
 - passwords: never ask the user to say a password and never put one in "text". Use
   {"do": "enter the password", "secret": "<stored login name>"}; the app fills it itself.

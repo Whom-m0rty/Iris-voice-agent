@@ -1,6 +1,7 @@
 """What is on screen (UI Automation) and how to act on it."""
 import base64
 import io
+import os
 import re
 from dataclasses import dataclass
 
@@ -70,12 +71,32 @@ def resolve_window(name: str, timeout: float = 2) -> auto.WindowControl | None:
                "inbox": {"inbox", "gmail", "mail"}, "calculator": {"calculator", "калькулятор"}}
     for x in list(words):
         words |= aliases.get(x, set())
+    # apps whose title is the open document or chat (Telegram shows the chat name): match the process
+    for w in auto.GetRootControl().GetChildren():
+        if (w.Name or "").strip() and not w.IsOffscreen and _process_name(w.ProcessId) in words:
+            return w
     best, score = None, 0
     for title in open_windows():
         s = len(words & set(re.findall(r"\w+", title.lower())))
         if s > score:
             best, score = title, s
     return find_window(re.escape(best), timeout) if best else None
+
+
+def _process_name(pid: int) -> str:
+    """Executable name without .exe, lower case ("telegram", "chrome")."""
+    import ctypes
+    from ctypes import wintypes
+    h = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)      # PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return ""
+    try:
+        buf = ctypes.create_unicode_buffer(512)
+        size = wintypes.DWORD(512)
+        ok = ctypes.windll.kernel32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size))
+        return os.path.splitext(os.path.basename(buf.value))[0].lower() if ok else ""
+    finally:
+        ctypes.windll.kernel32.CloseHandle(h)
 
 
 def find_window(title_re: str, timeout: float = 5) -> auto.WindowControl | None:
@@ -119,8 +140,10 @@ def snapshot(window: auto.Control, max_depth: int = 25) -> Snapshot:
             content = _text_of(ctrl)
             if content:
                 texts.append(f"{name or 'text field'} contains: {content[:120]}")
-        key = f"e{len(elements)}"
-        elements[key] = Element(key, kind.removesuffix("Control"), name, ctrl, password)
+        el = Element(f"e{len(elements)}", kind.removesuffix("Control"), name, ctrl, password)
+        if name and _duplicate(el, elements.values()):
+            continue                          # Qt nests same-named controls; offer each once
+        elements[el.key] = el
     return Snapshot(window.Name, elements, texts, unlabeled)
 
 
@@ -132,6 +155,19 @@ def wait_for_change(window, before: str, timeout: float = 0.6, every: float = 0.
         time.sleep(every)
         if snapshot(window).state() != before:
             return True
+    return False
+
+
+def _duplicate(el: Element, seen) -> bool:
+    """Same kind and name as an element already listed, with one rectangle inside the other."""
+    r = el.ctrl.BoundingRectangle
+    for other in seen:
+        if other.kind == el.kind and other.name == el.name:
+            o = other.ctrl.BoundingRectangle
+            inside = r.left >= o.left and r.top >= o.top and r.right <= o.right and r.bottom <= o.bottom
+            outside = o.left >= r.left and o.top >= r.top and o.right <= r.right and o.bottom <= r.bottom
+            if inside or outside:
+                return True
     return False
 
 
@@ -186,16 +222,29 @@ def type_secret(el: Element, value: str) -> None:
         auto.SendUnicodeChar(ch)
 
 
+def type_keys(text: str) -> None:
+    """Type like a person, one character at a time (any language, no SendKeys escapes)."""
+    for ch in text:
+        auto.SendUnicodeChar(ch)
+
+
 def type_text(el: Element, text: str) -> None:
+    """Set the field's value; if the app did not take it (Qt apps such as Telegram report
+    success but show nothing), click the field and type the characters instead."""
     try:
         vp = el.ctrl.GetValuePattern()
     except Exception:
         vp = None
     if vp and not vp.IsReadOnly:
-        vp.SetValue(text, waitTime=0)
-    else:
-        el.ctrl.Click(simulateMove=False, waitTime=0)
-        auto.SendKeys(text, interval=0.01, waitTime=0)
+        try:
+            vp.SetValue(text, waitTime=0)
+            if (vp.Value or "").strip() == text.strip():
+                return
+        except Exception:
+            pass
+    el.ctrl.Click(simulateMove=False, waitTime=0)
+    auto.SendKeys("{Ctrl}a", waitTime=0)          # replace whatever the field held
+    type_keys(text)
 
 
 # ---- pixels, for the vision fallback -----------------------------------------
