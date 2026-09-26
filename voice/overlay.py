@@ -30,6 +30,7 @@ URL = "ws://127.0.0.1:8770"
 GLIDE_MS = int(os.environ.get("CURSOR_GLIDE_MS", "450"))
 SCALE = float(os.environ.get("CURSOR_SCALE", "3.4"))
 IDLE_HIDE_S = 10
+PANEL_IDLE_S = 120
 
 VIA = {  # frame / ripple colour per decision path
     "kev": QColor(46, 204, 113),
@@ -78,6 +79,7 @@ class Overlay(QWidget):
         self.target_label = ""
         self.hidden_until = 0.0
         self.panel = overlay_panel.PanelModel()
+        self.last_event = time.time()
 
         self.anim = QVariantAnimation(self, duration=GLIDE_MS, easingCurve=QEasingCurve.InOutCubic)
         self.anim.valueChanged.connect(self._moved)
@@ -107,6 +109,7 @@ class Overlay(QWidget):
     def on_event(self, ev: dict):
         kind = ev.get("kind")
         self.panel.on_event(ev)
+        self.last_event = time.time()
         if kind in ("target", "cursor", "click", "overlay_hide"):
             self.last_activity = time.time()
         if kind in ("target", "cursor"):
@@ -137,6 +140,8 @@ class Overlay(QWidget):
     def _tick(self):
         self.phase = (self.phase + 2.2) % 360
         now = time.time()
+        if self.panel.visible and now - self.last_event > PANEL_IDLE_S:
+            self.panel.visible = False        # the session is over: give the screen back
         self.ripples = [r for r in self.ripples if now - r[1] < 0.7]
         if self.visible_cursor and now - self.last_activity > IDLE_HIDE_S and not self.anim.state():
             self.visible_cursor = False
