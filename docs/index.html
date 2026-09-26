@@ -111,7 +111,8 @@
 
   /* three errands: each told as what you say, and who did the work */
   .errands { display: grid; gap: 20px; }
-  @media (min-width: 900px) { .errands { grid-template-columns: repeat(3, 1fr); } }
+  @media (min-width: 640px) { .errands { grid-template-columns: repeat(2, 1fr); } }
+  @media (min-width: 960px) { .errands { grid-template-columns: repeat(3, 1fr); } }
   .errand { background: var(--surface); border-radius: var(--r); padding: 24px; display: flex; flex-direction: column; gap: 14px; }
   .errand q { font-size: 23px; line-height: 1.3; font-weight: 600; quotes: "“" "”"; }
   .errand p { margin: 0; color: var(--soft); font-size: 17px; }
@@ -137,21 +138,12 @@
   .parts h3 { font-size: 22px; margin: 0 0 6px; }
   .parts p { margin: 0; color: var(--soft); }
 
-  /* swap table */
-  .swap { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--surface); border-radius: var(--r); overflow: hidden; font-size: 17px; }
-  .swap th, .swap td { text-align: left; padding: 16px 18px; vertical-align: top; border-bottom: 1px solid var(--rule); }
-  .swap tr:last-child td { border-bottom: 0; }
-  .swap th { font-size: 15px; color: var(--soft); font-weight: 600; }
-  .swap td:first-child { font-weight: 800; white-space: nowrap; }
-  .swap td:last-child { color: var(--soft); font-size: 16px; }
-  .swap td { overflow-wrap: anywhere; }
-  @media (max-width: 720px) {
-    .swap thead { display: none; }
-    .swap, .swap tbody, .swap tr, .swap td { display: block; }
-    .swap tr { border-bottom: 1px solid var(--rule); padding: 8px 0; }
-    .swap tr:last-child { border-bottom: 0; }
-    .swap td { border: 0; padding: 6px 18px; }
-  }
+  /* swap grid */
+  .swap { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+  .swap > div { background: var(--surface); border-radius: var(--r); padding: 20px 22px; }
+  .swap h3 { margin: 0 0 10px; font-size: 20px; }
+  .swap p { margin: 0 0 6px; color: var(--soft); font-size: 17px; }
+  .swap p:first-of-type { color: var(--ink); font-weight: 600; }
   pre { background: var(--code); border-radius: 14px; padding: 16px 18px; overflow-x: auto; font-size: 15px; line-height: 1.55; margin: 20px 0 0; }
   :not(pre) > code { background: var(--code); padding: 1px 6px; border-radius: 6px; font-size: .88em; }
 
@@ -175,7 +167,6 @@
   ol.install pre { margin-top: 10px; }
   ol.install > li > div { min-width: 0; }
 
-  .limits { margin: 0; padding-left: 1.2em; } .limits li { margin-bottom: 10px; }
 
   footer { padding: 40px 0 64px; color: var(--soft); font-size: 16px; }
   footer p { margin: 0 0 8px; }
@@ -196,9 +187,9 @@
   <div class="hero">
     <div>
       <h1>A voice that uses your computer for you.</h1>
-      <p class="lead">Say what you want. Iris reads your mail, replies on Telegram and shops on Amazon in the
-        apps you already have, tells you what happened, and asks before anything that can't be undone.
-        Made for people who can't see the screen, and for anyone the screen confuses.</p>
+      <p class="lead">Say what you want, in plain words. Iris does it in any app on your Windows PC, tells you
+        what happened, and asks before anything that can't be undone. Made for people who can't see the
+        screen, and for anyone the screen confuses.</p>
       <div class="cta">
         <a class="btn main" href="#try">Install on Windows</a>
         <a class="btn" href="#demo">Watch the demo</a>
@@ -231,19 +222,34 @@
       You don't learn shortcuts. You say what you want.</p>
     <div class="errands">
       <article class="errand">
-        <q>Did my grandson write to me?</q>
-        <p>Reads the email out loud, takes the reply you dictate, reads it back, and sends it only after you say yes.</p>
-        <div class="actors"><span class="actor"><i class="c-api"></i>Gmail API</span><span class="actor"><i class="c-ask"></i>Asks first</span></div>
+        <q>Did anyone write to me today?</q>
+        <p>Reads your mail out loud and sends the reply you dictate after your yes.</p>
+        <div class="actors"><span class="actor"><i class="c-api"></i>Mail API</span><span class="actor"><i class="c-ask"></i>Asks first</span></div>
       </article>
       <article class="errand">
-        <q>Tell Peter on Telegram I'm running late.</q>
-        <p>Types in the chat. The send button has no label, so vision finds it. Iris says “sent” only after the text has left the box.</p>
-        <div class="actors"><span class="actor"><i class="c-kev"></i>Kev</span><span class="actor"><i class="c-vision"></i>Claude vision</span><span class="actor"><i class="c-ask"></i>Asks first</span></div>
+        <q>Tell Peter I'm running late.</q>
+        <p>Writes in your messenger, even where the send button has no label.</p>
+        <div class="actors"><span class="actor"><i class="c-kev"></i>Kev</span><span class="actor"><i class="c-vision"></i>Claude vision</span></div>
       </article>
       <article class="errand">
-        <q>Put vitamin D in my basket. Now check out.</q>
-        <p>Before paying it asks and names the price. <span class="no">“No, wait.”</span> Nothing is bought, and it doesn't look for another way.</p>
-        <div class="actors"><span class="actor"><i class="c-kev"></i>Kev</span><span class="actor"><i class="c-vision"></i>Claude vision</span><span class="actor"><i class="c-ask"></i>Asks first</span></div>
+        <q>Order more vitamin D.</q>
+        <p>Fills the basket and names the price before paying. <span class="no">“No, wait”</span> stops it.</p>
+        <div class="actors"><span class="actor"><i class="c-vision"></i>Claude vision</span><span class="actor"><i class="c-ask"></i>Asks first</span></div>
+      </article>
+      <article class="errand">
+        <q>Find a video on how to bake bread and play it.</q>
+        <p>Searches the web and starts the video in a new tab.</p>
+        <div class="actors"><span class="actor"><i class="c-api"></i>Browser</span><span class="actor"><i class="c-kev"></i>Kev</span></div>
+      </article>
+      <article class="errand">
+        <q>What's the newest file in my Downloads?</q>
+        <p>Looks in the folder and tells you its name and date.</p>
+        <div class="actors"><span class="actor"><i class="c-kev"></i>Kev</span></div>
+      </article>
+      <article class="errand">
+        <q>What's on my screen?</q>
+        <p>Describes the window in front of you, including what a screen reader can't name.</p>
+        <div class="actors"><span class="actor"><i class="c-vision"></i>Claude vision</span></div>
       </article>
     </div>
   </section>
@@ -289,48 +295,34 @@
 
   <section id="swap">
     <h2>Swap any part with one line</h2>
-    <p class="sub">Iris is not tied to one model vendor. Each part is a setting in <code>.env</code>.
-      The one constant is that it hears through AssemblyAI, in one of two ways.</p>
-    <table class="swap">
-      <thead><tr><th>Part</th><th>Options</th><th>Status</th></tr></thead>
-      <tbody>
-      <tr><td>Ears</td><td><b>AssemblyAI Universal-Streaming</b> speech-to-text, or the whole voice loop on the
-        <b>AssemblyAI Voice Agent API</b></td><td>Both run. The demo uses streaming.</td></tr>
-      <tr><td>Brain</td><td><b>Claude</b> through a Claude Code login or the Anthropic API, or <b>any model on the
-        AssemblyAI LLM Gateway</b> (Claude, GPT, Gemini, Qwen, DeepSeek and more, 47 listed), or any
-        OpenAI-compatible endpoint, local ones included (Ollama, vLLM)</td>
-        <td>Claude runs the demo. Gateway tested with Qwen 3.5 4B, 0.85 s per plan; other models depend on your AssemblyAI plan.</td></tr>
-      <tr><td>Decisions</td><td><b>Kev</b>, open weights, on your GPU, or <b>Jev</b> by TypeSafe in the cloud.
-        Same <code>/v1/systemone</code> API, so no GPU needed.</td>
-        <td>Kev measured. Jev speaks the same API; we haven't benchmarked it.</td></tr>
-      <tr><td>Eyes</td><td>Claude vision, through Claude Code or the Anthropic API</td><td>Measured: 14 of 14 clicks.</td></tr>
-      <tr><td>Hands</td><td>Any <b>MCP server</b> becomes voice tools, Gmail included. Otherwise, the screen.</td><td>Gmail tested.</td></tr>
-      <tr><td>Voice</td><td>Neural TTS (edge-tts), or the AssemblyAI Voice Agent voices</td><td>Both run.</td></tr>
-      </tbody>
-    </table>
-    <pre><code># .env
-BRAIN_BACKEND=openai                 # the AssemblyAI LLM Gateway, with your AssemblyAI key
-BRAIN_MODEL=gemini-3.5-flash         # or gpt-5-mini, claude-sonnet-4-6, qwen3.5-4b-32k-fast
-SYSTEMONE_URL=https://&lt;jev-endpoint&gt;  # Jev instead of local Kev
-SYSTEMONE_KEY=...</code></pre>
+    <p class="sub">No lock-in to one model vendor. Each part is a setting in <code>.env</code>.</p>
+    <div class="swap">
+      <div><h3>Ears</h3><p>AssemblyAI Streaming STT</p><p>AssemblyAI Voice Agent API</p></div>
+      <div><h3>Brain</h3><p>Claude</p><p>Any model on the AssemblyAI LLM Gateway</p><p>Ollama, vLLM, any OpenAI-compatible API</p></div>
+      <div><h3>Decisions</h3><p>Kev, local on your GPU</p><p>Jev by TypeSafe, in the cloud</p></div>
+      <div><h3>Eyes</h3><p>Claude vision</p></div>
+      <div><h3>Hands</h3><p>Any MCP server</p><p>The screen</p></div>
+      <div><h3>Voice</h3><p>Neural TTS</p><p>AssemblyAI voices</p></div>
+    </div>
+    <pre><code>BRAIN_BACKEND=openai        # AssemblyAI LLM Gateway
+BRAIN_MODEL=gemini-3.5-flash
+SYSTEMONE_URL=https://...   # Jev instead of Kev</code></pre>
   </section>
 
   <section id="trust">
     <h2>Why you can trust it with your computer</h2>
-    <p class="sub">Measured with the benchmarks in the repo (<code>bench/</code>). We wrote the test sets
-      ourselves and publish them so you can check.</p>
+    <p class="sub">Measured with the open benchmarks in <code>bench/</code>.</p>
     <div class="figures">
-      <div class="figure"><b>0</b><span>false “yes” in 60 spoken answers, hesitations and trick answers included</span></div>
-      <div class="figure"><b>0</b><span>risky actions let through, on 40 actions the safety gate had never seen</span></div>
-      <div class="figure"><b>14/14</b><span>clicks on unlabelled 14–40 px icons, half of them found only by pixels</span></div>
-      <div class="figure"><b>230 ms</b><span>per decision by Kev on a local GPU; vision only when needed</span></div>
+      <div class="figure"><b>0</b><span>false “yes” in 60 spoken answers</span></div>
+      <div class="figure"><b>0</b><span>risky actions let through in 40 unseen tests</span></div>
+      <div class="figure"><b>14/14</b><span>clicks on unlabelled icons</span></div>
+      <div class="figure"><b>230 ms</b><span>per decision, on your own GPU</span></div>
     </div>
     <ul class="rules">
-      <li><b>Passwords never reach a model.</b><span>Logins live in Windows Credential Manager. Code types them into fields Windows marks as password fields.</span></li>
-      <li><b>A “no” ends the task.</b><span>After you refuse, Iris can't look for another way in the same turn.</span></li>
-      <li><b>It reports only what the screen shows.</b><span>“Sent” means the text has left the input box. Results are read, not guessed.</span></li>
-      <li><b>Clicks stay in the right window.</b><span>The target window comes to the front, and every pixel click is checked to land inside it.</span></li>
-      <li><b>You choose apps it never touches.</b><span>List your banking app or your real account, and Iris won't read or click them.</span></li>
+      <li><b>Passwords never reach a model.</b><span>Code types them from Windows Credential Manager.</span></li>
+      <li><b>A “no” ends the task.</b><span>Iris doesn't look for another way.</span></li>
+      <li><b>No guessing.</b><span>It reports only what the screen shows.</span></li>
+      <li><b>Apps it never touches.</b><span>You list them; Iris won't read or click them.</span></li>
     </ul>
   </section>
 
@@ -355,16 +347,6 @@ cd Iris-voice-agent</code></pre></div></li>
     </ol>
   </section>
 
-  <section>
-    <h2>What it can't do yet</h2>
-    <ul class="limits">
-      <li>English only for now. The speech models understand 18 languages; the voice and prompts are English.</li>
-      <li>It works in apps that are already open. It doesn't launch programs yet.</li>
-      <li>Long flows on heavy websites are slow: each vision step takes 2 to 7 seconds.</li>
-      <li>Kev needs an NVIDIA GPU. Jev in the cloud speaks the same API, but we haven't benchmarked it.</li>
-      <li>Which Gateway models you can use depends on your AssemblyAI plan. Our hackathon account had Qwen 3.5 4B, rate-limited.</li>
-    </ul>
-  </section>
   </main>
 
   <footer>
