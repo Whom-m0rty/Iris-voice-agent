@@ -12,3 +12,4 @@ tools/
 __pycache__/
 *.log
 bench/results_kev-latest.json
+PLAN.md
