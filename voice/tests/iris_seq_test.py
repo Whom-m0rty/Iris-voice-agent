@@ -46,7 +46,7 @@ def main():
         await asyncio.sleep(1.0)
         while phrases:
             quiet = (not app.speaking and app.turns.empty() and time.perf_counter() - state["last_speech"] > QUIET_S
-                     and (app.awaiting_answer or not state["busy"]))
+                     and (app.awaiting_answer or (not state["busy"] and app.agent is None)))
             if quiet:
                 data = phrases.pop(0)
                 data += silence[:-len(data) % CHUNK] + silence * 25   # whole 100 ms chunks only
