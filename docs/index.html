@@ -5,252 +5,400 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Iris — a voice that uses your computer for you</title>
 <meta name="description" content="Iris is a voice agent for Windows. Say what you want; it does it in any app, tells you what happened, and asks before anything that can't be undone. Built on AssemblyAI.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,600;0,800;1,400&display=swap" rel="stylesheet">
 <style>
+  /* Tokens. The three signal colours are the ones the on-screen overlay uses:
+     green = Kev acted, violet = Claude vision acted, red = Iris is asking before acting. */
   :root {
-    --bg: #fbfaf7; --panel: #ffffff; --ink: #1b1c20; --muted: #5d6070; --line: #e6e3dc;
-    --accent: #c9623f; --accent-soft: #fbeee8; --kev: #1e9e5a; --vision: #7b45e0; --confirm: #d23b2c;
-    --mcp: #2677c9; --code: #f3f1ec;
+    --bg: #eef1f8; --surface: #ffffff; --ink: #0f1426; --soft: #4a5170; --rule: #d5dbea;
+    --iris: #4b2fd6; --iris-wash: #e6e1ff;
+    --kev: #12803f; --vision: #7a3fe0; --ask: #c4271a; --api: #1f63b8;
+    --code: #e4e8f2;
+    --r: 20px;
+    --text: "Atkinson Hyperlegible Next", "Segoe UI", system-ui, sans-serif;
+    --mono: "Atkinson Hyperlegible Mono", "Cascadia Code", Consolas, monospace;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #111216; --panel: #191a20; --ink: #eeeef2; --muted: #a3a6b5; --line: #2b2d38;
-            --accent: #e0835f; --accent-soft: #2a1c16; --code: #1f2028; }
+    :root:not([data-theme="light"]) {
+      --bg: #0b0e1c; --surface: #141a30; --ink: #eef0fb; --soft: #a4abc8; --rule: #262e4d;
+      --iris: #a996ff; --iris-wash: #231c4d;
+      --kev: #3ecf7a; --vision: #b690ff; --ask: #ff6b5c; --api: #6aa8ff; --code: #1b2240;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b0e1c; --surface: #141a30; --ink: #eef0fb; --soft: #a4abc8; --rule: #262e4d;
+    --iris: #a996ff; --iris-wash: #231c4d;
+    --kev: #3ecf7a; --vision: #b690ff; --ask: #ff6b5c; --api: #6aa8ff; --code: #1b2240;
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
-  body { margin: 0; background: var(--bg); color: var(--ink);
-         font: 17px/1.6 "Segoe UI", system-ui, -apple-system, sans-serif; }
-  a { color: var(--accent); }
-  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
-  header.top { display: flex; align-items: center; gap: 12px; padding: 18px 0; }
-  .logo { width: 30px; height: 30px; border-radius: 50%;
-          background: conic-gradient(#d97757, #f4a261, #b388ff, #7aa2f7, #d97757); }
-  header.top b { font-size: 19px; }
-  header.top nav { margin-left: auto; display: flex; gap: 18px; font-size: 15px; }
-  header.top nav a { color: var(--muted); text-decoration: none; }
-  .hero { padding: 48px 0 36px; }
-  .hero h1 { font-size: clamp(34px, 5.4vw, 58px); line-height: 1.08; margin: 0 0 18px; letter-spacing: -0.02em; }
-  .hero h1 em { font-style: normal; color: var(--accent); }
-  .hero p.lead { font-size: clamp(18px, 2.2vw, 21px); color: var(--muted); max-width: 720px; margin: 0 0 26px; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 19px/1.6 var(--text); }
+  a { color: var(--iris); text-underline-offset: 3px; }
+  h1, h2, h3, .errand q { text-wrap: balance; }
+  :focus-visible { outline: 3px solid var(--iris); outline-offset: 3px; border-radius: 6px; }
+  code, pre { font-family: var(--mono); }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+  @media (min-width: 720px) { .wrap { padding: 0 28px; } }
+
+  /* top bar */
+  .top { display: flex; align-items: center; gap: 12px; padding: 20px 0; }
+  .mark { width: 30px; height: 30px; border-radius: 50%; flex: none;
+          background: radial-gradient(circle, var(--ink) 0 26%, var(--iris) 27% 62%, var(--iris-wash) 63%); }
+  .top b { font-size: 22px; font-weight: 800; }
+  .top nav { margin-left: auto; display: flex; gap: 22px; font-size: 16px; }
+  .top nav a { color: var(--soft); text-decoration: none; }
+  .top nav a:hover { color: var(--ink); }
+  @media (max-width: 760px) { .top nav a:not(.gh) { display: none; } }
+
+  /* hero: headline + the conversation that is the product */
+  .hero { display: grid; gap: 40px; padding: 36px 0 64px; align-items: center; }
+  @media (min-width: 940px) { .hero { grid-template-columns: 1fr 1.05fr; gap: 56px; padding-top: 56px; } }
+  h1 { font-size: clamp(40px, 6.2vw, 72px); line-height: 1.02; font-weight: 800; letter-spacing: -0.025em; margin: 0 0 22px; }
+  .lead { font-size: clamp(19px, 2.1vw, 22px); color: var(--soft); margin: 0 0 30px; max-width: 34em; }
   .cta { display: flex; flex-wrap: wrap; gap: 12px; }
-  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 12px;
-         font-weight: 600; text-decoration: none; border: 1px solid var(--line); color: var(--ink); background: var(--panel); }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .video { margin: 34px 0 0; aspect-ratio: 16 / 9; border-radius: 18px; border: 1px solid var(--line);
-           background: var(--panel); display: grid; place-items: center; overflow: hidden; }
+  .btn { display: inline-flex; align-items: center; min-height: 52px; padding: 0 24px; border-radius: 999px;
+         font-weight: 600; text-decoration: none; color: var(--ink); border: 2px solid var(--ink); }
+  .btn.main { background: var(--iris); border-color: var(--iris); color: #fff; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn.main { color: #0b0e1c; } }
+  :root[data-theme="dark"] .btn.main { color: #0b0e1c; }
+
+  .talk { background: var(--surface); border-radius: 28px; padding: 26px 24px 20px;
+          box-shadow: 0 30px 60px -30px rgba(20, 20, 60, .35); }
+  .talk ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+  .line { display: grid; grid-template-columns: 56px 1fr; gap: 12px; align-items: start; }
+  .who { font-size: 15px; font-weight: 600; color: var(--soft); padding-top: 4px; }
+  .said { font-size: 21px; line-height: 1.4; padding: 10px 16px; border-radius: 16px; }
+  .you .said { background: var(--code); }
+  .iris .said { background: var(--iris-wash); }
+  .iris.ask .said { background: transparent; box-shadow: inset 0 0 0 3px var(--ask); }
+  .did { padding-left: 68px; font-size: 15px; color: var(--soft); display: flex; align-items: center; gap: 8px; margin-top: -6px; }
+  .did i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  @media (max-width: 520px) {
+    .talk { padding: 20px 16px 16px; }
+    .line { grid-template-columns: 1fr; gap: 4px; }
+    .who { padding: 0 0 0 4px; }
+    .said { font-size: 19px; }
+    .did { padding-left: 4px; margin-top: 0; }
+  }
+  .talk .foot { display: flex; justify-content: space-between; align-items: center; margin-top: 18px;
+                font-size: 15px; color: var(--soft); }
+  .replay { font: inherit; font-weight: 600; color: var(--iris); background: none; border: 0; cursor: pointer; padding: 6px 0; }
+  .wave { display: inline-flex; gap: 3px; height: 16px; align-items: center; vertical-align: -2px; margin-left: 8px; }
+  .wave span { width: 3px; height: 100%; background: currentColor; border-radius: 2px; transform-origin: center; }
+  /* the one piece of motion: the conversation plays once, then stays */
+  .js .talk .line, .js .talk .did { opacity: 0; transform: translateY(8px); transition: opacity .45s ease, transform .45s ease; }
+  .js .talk .shown { opacity: 1; transform: none; }
+  .line:not(.speaking) .wave { display: none; }
+  .speaking .wave span { animation: talk .9s ease-in-out infinite; }
+  .speaking .wave span:nth-child(2) { animation-delay: .15s; } .speaking .wave span:nth-child(3) { animation-delay: .3s; }
+  @keyframes talk { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
+  @media (prefers-reduced-motion: reduce) {
+    .js .talk .line, .js .talk .did { opacity: 1; transform: none; transition: none; }
+    .speaking .wave span { animation: none; }
+  }
+
+  section { padding: 72px 0; }
+  h2 { font-size: clamp(30px, 4vw, 46px); line-height: 1.1; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 16px; max-width: 20em; }
+  .sub { color: var(--soft); max-width: 40em; margin: 0 0 36px; }
+
+  /* video */
+  .video { aspect-ratio: 16 / 9; border-radius: var(--r); background: var(--ink); color: var(--bg);
+           display: grid; place-items: center; overflow: hidden; }
   .video iframe { width: 100%; height: 100%; border: 0; }
-  .video .soon { color: var(--muted); text-align: center; padding: 20px; }
-  section { padding: 56px 0; border-top: 1px solid var(--line); }
-  section h2 { font-size: clamp(26px, 3.4vw, 36px); margin: 0 0 12px; letter-spacing: -0.01em; }
-  section p.sub { color: var(--muted); max-width: 760px; margin: 0 0 28px; }
-  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; }
-  .card h3 { margin: 0 0 6px; font-size: 19px; }
-  .card p { margin: 0; color: var(--muted); font-size: 16px; }
-  .quote { font-size: 18px; margin: 0 0 10px; }
-  .quote b { color: var(--accent); }
-  .pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px;
-          color: #fff; margin-right: 6px; vertical-align: 2px; }
-  .p-kev { background: var(--kev); } .p-vision { background: var(--vision); } .p-mcp { background: var(--mcp); }
-  .p-confirm { background: var(--confirm); }
-  .flow { width: 100%; height: auto; display: block; }
-  .flow text { font-family: "Segoe UI", system-ui, sans-serif; fill: var(--ink); }
-  .flow .muted { fill: var(--muted); }
-  .flow .box { fill: var(--panel); stroke: var(--line); }
-  .numbers { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
-  .num { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; }
-  .num b { display: block; font-size: 34px; line-height: 1.1; }
-  .num span { color: var(--muted); font-size: 15px; }
-  table { width: 100%; border-collapse: collapse; font-size: 15px; margin-top: 18px; }
-  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { color: var(--muted); font-weight: 600; }
-  td { overflow-wrap: anywhere; }
-  pre { background: var(--code); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
-        overflow-x: auto; font-size: 14px; line-height: 1.5; }
-  code { font-family: "Cascadia Code", Consolas, monospace; }
-  ol.steps { padding-left: 22px; } ol.steps li { margin: 0 0 14px; }
-  .note { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; border-radius: 0 12px 12px 0; }
-  ul.honest li { margin-bottom: 8px; }
-  footer { padding: 40px 0 60px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
-  ol.flow-steps { display: none; list-style: none; padding: 0; margin: 0; }
-  ol.flow-steps li { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-                     padding: 10px 14px; margin-bottom: 8px; }
-  ol.flow-steps li b { display: block; }
-  ol.flow-steps li span { color: var(--muted); font-size: 15px; }
-  @media (max-width: 720px) { .flow { display: none; } ol.flow-steps { display: block; } }
-  @media (max-width: 640px) { header.top nav { display: none; } body { font-size: 16px; } }
+  .video p { margin: 0; padding: 20px; text-align: center; font-size: 20px; }
+
+  /* three errands: each told as what you say, and who did the work */
+  .errands { display: grid; gap: 20px; }
+  @media (min-width: 900px) { .errands { grid-template-columns: repeat(3, 1fr); } }
+  .errand { background: var(--surface); border-radius: var(--r); padding: 24px; display: flex; flex-direction: column; gap: 14px; }
+  .errand q { font-size: 23px; line-height: 1.3; font-weight: 600; quotes: "“" "”"; }
+  .errand p { margin: 0; color: var(--soft); font-size: 17px; }
+  .errand .no { color: var(--ink); font-weight: 600; }
+  .actors { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 6px; }
+  .actor { display: inline-flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 600; }
+  .actor i, .key i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex: none; }
+  .c-api { background: var(--api); } .c-kev { background: var(--kev); } .c-vision { background: var(--vision); } .c-ask { background: var(--ask); }
+
+  /* how it works */
+  .flow { width: 100%; height: auto; display: block; background: var(--surface); border-radius: var(--r); padding: 12px; }
+  .flow text { font-family: var(--text); fill: var(--ink); }
+  .flow .soft { fill: var(--soft); }
+  .flow .box { fill: var(--surface); stroke: var(--rule); stroke-width: 2; }
+  .flow .arrows { stroke: var(--soft); }
+  .flow .arrowhead { fill: var(--soft); }
+  .flow .s-aai { stroke: var(--iris); } .flow .s-api { stroke: var(--api); } .flow .s-kev { stroke: var(--kev); } .flow .s-ask { stroke: var(--ask); }
+  ol.path { display: none; margin: 0; padding: 0 0 0 1.4em; }
+  ol.path li { margin-bottom: 12px; } ol.path li span { display: block; color: var(--soft); font-size: 17px; }
+  @media (max-width: 720px) { .flow { display: none; } ol.path { display: block; } }
+  .parts { display: grid; gap: 28px 40px; margin-top: 44px; }
+  @media (min-width: 760px) { .parts { grid-template-columns: 1fr 1fr; } }
+  .parts h3 { font-size: 22px; margin: 0 0 6px; }
+  .parts p { margin: 0; color: var(--soft); }
+
+  /* swap table */
+  .swap { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--surface); border-radius: var(--r); overflow: hidden; font-size: 17px; }
+  .swap th, .swap td { text-align: left; padding: 16px 18px; vertical-align: top; border-bottom: 1px solid var(--rule); }
+  .swap tr:last-child td { border-bottom: 0; }
+  .swap th { font-size: 15px; color: var(--soft); font-weight: 600; }
+  .swap td:first-child { font-weight: 800; white-space: nowrap; }
+  .swap td:last-child { color: var(--soft); font-size: 16px; }
+  .swap td { overflow-wrap: anywhere; }
+  @media (max-width: 720px) {
+    .swap thead { display: none; }
+    .swap, .swap tbody, .swap tr, .swap td { display: block; }
+    .swap tr { border-bottom: 1px solid var(--rule); padding: 8px 0; }
+    .swap tr:last-child { border-bottom: 0; }
+    .swap td { border: 0; padding: 6px 18px; }
+  }
+  pre { background: var(--code); border-radius: 14px; padding: 16px 18px; overflow-x: auto; font-size: 15px; line-height: 1.55; margin: 20px 0 0; }
+  :not(pre) > code { background: var(--code); padding: 1px 6px; border-radius: 6px; font-size: .88em; }
+
+  /* numbers */
+  .figures { display: grid; gap: 20px; }
+  @media (min-width: 760px) { .figures { grid-template-columns: repeat(4, 1fr); } }
+  .figure b { display: block; font-size: clamp(44px, 5.4vw, 64px); line-height: 1; font-weight: 800; letter-spacing: -0.03em; color: var(--iris); margin-bottom: 10px; }
+  .figure span { color: var(--soft); font-size: 17px; }
+  .rules { display: grid; gap: 14px; margin: 48px 0 0; padding: 0; list-style: none; }
+  @media (min-width: 760px) { .rules { grid-template-columns: 1fr 1fr; } }
+  .rules li { background: var(--surface); border-radius: 16px; padding: 18px 20px; }
+  .rules b { display: block; margin-bottom: 4px; }
+  .rules span { color: var(--soft); font-size: 17px; }
+
+  /* install */
+  .need { background: var(--iris-wash); border-radius: var(--r); padding: 20px 22px; margin-bottom: 32px; }
+  ol.install { margin: 0; padding: 0; list-style: none; counter-reset: s; display: grid; gap: 26px; }
+  ol.install > li { counter-increment: s; display: grid; grid-template-columns: 48px 1fr; gap: 16px; }
+  ol.install > li::before { content: counter(s); width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+                            background: var(--ink); color: var(--bg); font-weight: 800; }
+  ol.install pre { margin-top: 10px; }
+  ol.install > li > div { min-width: 0; }
+
+  .limits { margin: 0; padding-left: 1.2em; } .limits li { margin-bottom: 10px; }
+
+  footer { padding: 40px 0 64px; color: var(--soft); font-size: 16px; }
+  footer p { margin: 0 0 8px; }
 </style>
 </head>
 <body>
+<script>document.documentElement.classList.add("js")</script>
 <div class="wrap">
   <header class="top">
-    <div class="logo" aria-hidden="true"></div><b>Iris</b>
-    <nav>
-      <a href="#how">How it works</a><a href="#flex">Your way</a><a href="#trust">Trust</a><a href="#try">Try it</a>
-      <a href="https://github.com/Whom-m0rty/Iris-voice-agent">GitHub</a>
+    <div class="mark" aria-hidden="true"></div><b>Iris</b>
+    <nav aria-label="Sections">
+      <a href="#how">How it works</a><a href="#swap">Swap parts</a><a href="#trust">Trust</a><a href="#try">Install</a>
+      <a class="gh" href="https://github.com/Whom-m0rty/Iris-voice-agent">GitHub</a>
     </nav>
   </header>
 
+  <main>
   <div class="hero">
-    <h1>A voice that uses your computer <em>for you</em>.</h1>
-    <p class="lead">Iris is a voice agent for Windows. Say what you want: it reads your mail, replies on
-      Telegram, shops on Amazon, in the apps you already use. It tells you what happened, and it asks
-      before anything that can't be undone. Made for people who can't see the screen, and for anyone
-      the screen confuses.</p>
-    <div class="cta">
-      <a class="btn primary" href="#try">Try it on your PC</a>
-      <a class="btn" href="#demo">Watch the demo</a>
-      <a class="btn" href="https://github.com/Whom-m0rty/Iris-voice-agent">Source on GitHub</a>
+    <div>
+      <h1>A voice that uses your computer for you.</h1>
+      <p class="lead">Say what you want. Iris reads your mail, replies on Telegram and shops on Amazon in the
+        apps you already have, tells you what happened, and asks before anything that can't be undone.
+        Made for people who can't see the screen, and for anyone the screen confuses.</p>
+      <div class="cta">
+        <a class="btn main" href="#try">Install on Windows</a>
+        <a class="btn" href="#demo">Watch the demo</a>
+      </div>
     </div>
-    <div class="video" id="demo">
-      <!-- VIDEO: replace this div's content with the YouTube embed once the demo is recorded -->
-      <div class="soon">▶ Demo video — coming with the submission</div>
-    </div>
+
+    <figure class="talk" aria-label="Example conversation with Iris on Amazon">
+      <ol id="talk">
+        <li class="line you"><span class="who">You</span><span class="said">Put vitamin D in my basket.</span></li>
+        <li class="line iris"><span class="who">Iris</span><span class="said">Done. One bottle of vitamin D3 is in your basket.<span class="wave" aria-hidden="true"><span></span><span></span><span></span></span></span></li>
+        <li class="did"><i class="c-kev"></i>Kev and Claude vision clicked on amazon.it</li>
+        <li class="line you"><span class="who">You</span><span class="said">Now check out.</span></li>
+        <li class="line iris ask"><span class="who">Iris</span><span class="said">Check out and pay for your basket? It costs €32.86.<span class="wave" aria-hidden="true"><span></span><span></span><span></span></span></span></li>
+        <li class="line you"><span class="who">You</span><span class="said">No, wait.</span></li>
+        <li class="line iris"><span class="who">Iris</span><span class="said">Okay. I didn't buy anything.<span class="wave" aria-hidden="true"><span></span><span></span><span></span></span></span></li>
+      </ol>
+      <div class="foot"><span>The Amazon errand from the demo</span><button class="replay" id="replay" type="button">Play again</button></div>
+    </figure>
+  </div>
+
+  <div class="video" id="demo">
+    <!-- VIDEO: replace this paragraph with the YouTube embed once the demo is recorded -->
+    <p>The demo video is coming with the submission.</p>
   </div>
 
   <section>
     <h2>Screen readers stop where apps stop labelling their buttons.</h2>
-    <p class="sub">A screen reader reads the accessibility tree. When an app draws its own icons, it hears
-      “button, button, button”. Iris reads the tree when it is there, and looks at the pixels when it
-      isn't. And it doesn't need you to learn keyboard shortcuts: you just say what you want.</p>
-    <div class="grid">
-      <div class="card">
-        <p class="quote">“Did my grandson write to me?”</p>
-        <p><span class="pill p-mcp">API</span>Reads the email out loud, takes the reply you dictate, reads
-          it back and sends only after your yes.</p>
-      </div>
-      <div class="card">
-        <p class="quote">“Tell Peter on Telegram I'm running late.”</p>
-        <p><span class="pill p-kev">Kev</span><span class="pill p-vision">Claude</span>Types in the chat; the
-          send button has no label, so vision finds it. It checks the message really left.</p>
-      </div>
-      <div class="card">
-        <p class="quote">“Put vitamin D in my basket. Now check out.”</p>
-        <p><span class="pill p-confirm">Asks first</span>“Check out and pay for your basket? It costs
-          €32.86.” — <b>“No, wait.”</b> Nothing is bought, and it doesn't try again.</p>
-      </div>
+    <p class="sub">A screen reader reads the accessibility tree. When an app draws its own icons, all you hear is
+      “button, button, button”. Iris reads the tree when it is there and looks at the pixels when it isn't.
+      You don't learn shortcuts. You say what you want.</p>
+    <div class="errands">
+      <article class="errand">
+        <q>Did my grandson write to me?</q>
+        <p>Reads the email out loud, takes the reply you dictate, reads it back, and sends it only after you say yes.</p>
+        <div class="actors"><span class="actor"><i class="c-api"></i>Gmail API</span><span class="actor"><i class="c-ask"></i>Asks first</span></div>
+      </article>
+      <article class="errand">
+        <q>Tell Peter on Telegram I'm running late.</q>
+        <p>Types in the chat. The send button has no label, so vision finds it. Iris says “sent” only after the text has left the box.</p>
+        <div class="actors"><span class="actor"><i class="c-kev"></i>Kev</span><span class="actor"><i class="c-vision"></i>Claude vision</span><span class="actor"><i class="c-ask"></i>Asks first</span></div>
+      </article>
+      <article class="errand">
+        <q>Put vitamin D in my basket. Now check out.</q>
+        <p>Before paying it asks and names the price. <span class="no">“No, wait.”</span> Nothing is bought, and it doesn't look for another way.</p>
+        <div class="actors"><span class="actor"><i class="c-kev"></i>Kev</span><span class="actor"><i class="c-vision"></i>Claude vision</span><span class="actor"><i class="c-ask"></i>Asks first</span></div>
+      </article>
     </div>
   </section>
 
   <section id="how">
     <h2>How it works</h2>
-    <p class="sub">Four parts. The fast one does almost all the work; the slow one only steps in when it has to.</p>
-    <svg class="flow" viewBox="0 0 1000 330" role="img" aria-label="Voice goes to AssemblyAI speech-to-text, then to Claude which plans; a direct API or the screen agent acts; a safety gate asks before risky actions; a neural voice answers.">
-      <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8a8d9c"/></marker></defs>
-      <g stroke="#8a8d9c" stroke-width="2" fill="none" marker-end="url(#a)">
+    <p class="sub">The fast part does almost all the work. The slow part steps in only when it has to.
+      The colours are the ones Iris draws on your screen, so a sighted helper can see who is acting.</p>
+    <svg class="flow" viewBox="0 0 1000 330" role="img" aria-labelledby="flow-t">
+      <title id="flow-t">You speak; AssemblyAI turns speech into text; Claude plans; a direct API or the screen agent acts; anything risky waits for your spoken yes.</title>
+      <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+      <g class="arrows" stroke-width="2" fill="none" marker-end="url(#a)">
         <path d="M150,70 H215"/><path d="M425,70 H490"/><path d="M600,105 V150 H330 V185"/><path d="M600,105 V150 H740 V185"/>
         <path d="M740,265 V295 H600"/><path d="M330,265 V295 H470"/>
       </g>
-      <rect class="box" x="20" y="35" width="130" height="70" rx="14"/><text x="85" y="66" text-anchor="middle" font-size="17" font-weight="600">You speak</text><text x="85" y="88" text-anchor="middle" font-size="13" class="muted">any English</text>
-      <rect class="box" x="220" y="35" width="205" height="70" rx="14" stroke="#c9623f"/><text x="322" y="63" text-anchor="middle" font-size="16" font-weight="600">AssemblyAI</text><text x="322" y="85" text-anchor="middle" font-size="13" class="muted">streaming speech-to-text</text>
-      <rect class="box" x="495" y="35" width="215" height="70" rx="14"/><text x="602" y="63" text-anchor="middle" font-size="16" font-weight="600">Claude plans</text><text x="602" y="85" text-anchor="middle" font-size="13" class="muted">what to say, which tool</text>
-      <rect class="box" x="200" y="190" width="260" height="75" rx="14" stroke="#2677c9"/><text x="330" y="220" text-anchor="middle" font-size="16" font-weight="600">API first</text><text x="330" y="243" text-anchor="middle" font-size="13" class="muted">MCP tools (Gmail), browser jumps</text>
-      <rect class="box" x="560" y="190" width="360" height="75" rx="14" stroke="#1e9e5a"/><text x="740" y="216" text-anchor="middle" font-size="16" font-weight="600">Screen: Kev ~230 ms → Claude vision</text><text x="740" y="240" text-anchor="middle" font-size="13" class="muted">UI Automation first, pixels when the tree is blind</text>
-      <rect class="box" x="475" y="270" width="120" height="50" rx="12" stroke="#d23b2c"/><text x="535" y="300" text-anchor="middle" font-size="14" font-weight="600">Asks first</text>
+      <rect class="box" x="20" y="35" width="130" height="70" rx="16"/><text x="85" y="66" text-anchor="middle" font-size="18" font-weight="600">You speak</text><text x="85" y="88" text-anchor="middle" font-size="14" class="soft">pauses are fine</text>
+      <rect class="box s-aai" x="220" y="35" width="205" height="70" rx="16"/><text x="322" y="63" text-anchor="middle" font-size="18" font-weight="600">AssemblyAI</text><text x="322" y="86" text-anchor="middle" font-size="14" class="soft">streaming speech-to-text</text>
+      <rect class="box" x="495" y="35" width="215" height="70" rx="16"/><text x="602" y="63" text-anchor="middle" font-size="18" font-weight="600">Claude plans</text><text x="602" y="86" text-anchor="middle" font-size="14" class="soft">what to say, which tool</text>
+      <rect class="box s-api" x="200" y="190" width="260" height="75" rx="16"/><text x="330" y="221" text-anchor="middle" font-size="18" font-weight="600">API first</text><text x="330" y="244" text-anchor="middle" font-size="14" class="soft">MCP tools (Gmail), browser jumps</text>
+      <rect class="box s-kev" x="560" y="190" width="360" height="75" rx="16"/><text x="740" y="218" text-anchor="middle" font-size="18" font-weight="600">Screen: Kev ~230 ms, then vision</text><text x="740" y="242" text-anchor="middle" font-size="14" class="soft">accessibility tree first, pixels when it is blind</text>
+      <rect class="box s-ask" x="475" y="270" width="120" height="50" rx="14"/><text x="535" y="301" text-anchor="middle" font-size="16" font-weight="600">Asks first</text>
     </svg>
-    <ol class="flow-steps" aria-hidden="true">
-      <li><b>1 · You speak</b><span>any English, pauses are fine</span></li>
-      <li><b>2 · AssemblyAI hears</b><span>streaming speech-to-text</span></li>
-      <li><b>3 · Claude plans</b><span>what to say and which tool to use</span></li>
-      <li><b>4 · API first, or the screen</b><span>Gmail and browser jumps directly; otherwise Kev (~230 ms) and Claude vision click in the app</span></li>
-      <li><b>5 · Asks first</b><span>anything that sends, pays or deletes waits for your spoken yes</span></li>
+    <ol class="path">
+      <li>You speak<span>Any English. Pauses mid-sentence are fine.</span></li>
+      <li>AssemblyAI hears<span>Streaming speech-to-text.</span></li>
+      <li>Claude plans<span>What to say and which tool to use.</span></li>
+      <li>An API, or the screen<span>Gmail and web pages directly. Otherwise Kev (~230 ms) and Claude vision click in the app.</span></li>
+      <li>Asks first<span>Anything that sends, pays or deletes waits for your spoken yes.</span></li>
     </ol>
-    <div class="grid" style="margin-top:22px">
-      <div class="card"><h3>Ears — AssemblyAI</h3><p>Universal-Streaming speech-to-text. Short pauses are merged
-        into one turn, because people, older people especially, pause mid-sentence. A second backend runs
-        everything on AssemblyAI's Voice Agent API.</p></div>
-      <div class="card"><h3>Brain — Claude</h3><p>Turns what you said into a plan of small steps and picks the
-        tool: an API when one exists, the screen when it doesn't. Results are read from the screen, never guessed.</p></div>
-      <div class="card"><h3>Hands — Kev, then vision</h3><p>Kev, an open-weights decision model running locally,
-        picks each button from the accessibility tree in ~230 ms. When the tree has no answer, Claude looks at
-        the pixels, snapped to the real control or zoomed in for a second look.</p></div>
-      <div class="card"><h3>Guard — the spoken yes</h3><p>Anything that sends, pays, deletes or shares waits for
-        a yes, judged on your exact words. “Uh… who is it for?” gets the question again, not an action.</p></div>
+    <div class="parts">
+      <div><h3>Ears: AssemblyAI</h3><p>Universal-Streaming speech-to-text. Short pauses are merged into one turn,
+        because people, older people especially, pause mid-sentence. A second backend runs the whole voice loop on
+        AssemblyAI's Voice Agent API.</p></div>
+      <div><h3>Brain: Claude</h3><p>Turns what you said into small steps and picks the tool: an API when one
+        exists, the screen when it doesn't. Results are read from the screen, never guessed.</p></div>
+      <div><h3>Hands: Kev, then vision</h3><p>Kev, an open-weights decision model on your GPU, picks each button
+        from the accessibility tree in about 230 ms. When the tree has no answer, Claude looks at the pixels, snaps
+        to the real control, or zooms in for a second look.</p></div>
+      <div><h3>Guard: your spoken yes</h3><p>Anything that sends, pays, deletes or shares waits for a yes,
+        judged on your exact words. “Uh… who is it for?” gets the question again, not an action.</p></div>
     </div>
   </section>
 
-  <section id="flex">
-    <h2>Build it your way</h2>
-    <p class="sub">Every part is swappable with a line in <code>.env</code>. Nothing ties Iris to one model vendor —
-      except that it hears through AssemblyAI, in one of two ways.</p>
-    <table>
-      <tr><th>Part</th><th>Options</th><th>Status</th></tr>
-      <tr><td>Ears</td><td><b>AssemblyAI Universal-Streaming</b> speech-to-text (<code>voice/iris.py</code>) —
-        or the whole voice loop on the <b>AssemblyAI Voice Agent API</b> (<code>voice/client.py</code>)</td>
-        <td>both run; the demo uses streaming</td></tr>
-      <tr><td>Brain</td><td><b>Claude</b> (Claude Code login or Anthropic API) —
-        or <b>any model on the AssemblyAI LLM Gateway</b> (Claude, GPT, Gemini, Qwen, DeepSeek, Nemotron… 47 listed) —
-        or any OpenAI-compatible endpoint, local ones included (Ollama, vLLM)</td>
-        <td>Claude: demo. Gateway: tested with Qwen 3.5 4B (0.85 s per plan); other models depend on your AssemblyAI plan</td></tr>
-      <tr><td>Decisions</td><td><b>Kev</b>, open weights, on your GPU — or <b>Jev</b> by TypeSafe in the cloud:
-        the same <code>/v1/systemone</code> API, so no GPU needed (<code>SYSTEMONE_URL</code>, <code>SYSTEMONE_KEY</code>)</td>
-        <td>Kev: measured. Jev: API-compatible, not benchmarked by us</td></tr>
-      <tr><td>Eyes</td><td>Claude vision, through Claude Code or the Anthropic API</td><td>measured (14/14 clicks)</td></tr>
-      <tr><td>Hands</td><td>any <b>MCP server</b> becomes voice tools (Gmail included) — otherwise the screen</td><td>Gmail tested</td></tr>
-      <tr><td>Voice</td><td>neural TTS (edge-tts) — or AssemblyAI Voice Agent voices</td><td>both run</td></tr>
+  <section id="swap">
+    <h2>Swap any part with one line</h2>
+    <p class="sub">Iris is not tied to one model vendor. Each part is a setting in <code>.env</code>.
+      The one constant is that it hears through AssemblyAI, in one of two ways.</p>
+    <table class="swap">
+      <thead><tr><th>Part</th><th>Options</th><th>Status</th></tr></thead>
+      <tbody>
+      <tr><td>Ears</td><td><b>AssemblyAI Universal-Streaming</b> speech-to-text, or the whole voice loop on the
+        <b>AssemblyAI Voice Agent API</b></td><td>Both run. The demo uses streaming.</td></tr>
+      <tr><td>Brain</td><td><b>Claude</b> through a Claude Code login or the Anthropic API, or <b>any model on the
+        AssemblyAI LLM Gateway</b> (Claude, GPT, Gemini, Qwen, DeepSeek and more, 47 listed), or any
+        OpenAI-compatible endpoint, local ones included (Ollama, vLLM)</td>
+        <td>Claude runs the demo. Gateway tested with Qwen 3.5 4B, 0.85 s per plan; other models depend on your AssemblyAI plan.</td></tr>
+      <tr><td>Decisions</td><td><b>Kev</b>, open weights, on your GPU, or <b>Jev</b> by TypeSafe in the cloud.
+        Same <code>/v1/systemone</code> API, so no GPU needed.</td>
+        <td>Kev measured. Jev speaks the same API; we haven't benchmarked it.</td></tr>
+      <tr><td>Eyes</td><td>Claude vision, through Claude Code or the Anthropic API</td><td>Measured: 14 of 14 clicks.</td></tr>
+      <tr><td>Hands</td><td>Any <b>MCP server</b> becomes voice tools, Gmail included. Otherwise, the screen.</td><td>Gmail tested.</td></tr>
+      <tr><td>Voice</td><td>Neural TTS (edge-tts), or the AssemblyAI Voice Agent voices</td><td>Both run.</td></tr>
+      </tbody>
     </table>
-    <pre><code># .env examples
-BRAIN_BACKEND=openai                 # AssemblyAI LLM Gateway, your AssemblyAI key
-BRAIN_MODEL=gemini-3.5-flash         # or gpt-5-mini, claude-sonnet-4-6, qwen3.5-4b-32k-fast ...
+    <pre><code># .env
+BRAIN_BACKEND=openai                 # the AssemblyAI LLM Gateway, with your AssemblyAI key
+BRAIN_MODEL=gemini-3.5-flash         # or gpt-5-mini, claude-sonnet-4-6, qwen3.5-4b-32k-fast
 SYSTEMONE_URL=https://&lt;jev-endpoint&gt;  # Jev instead of local Kev
 SYSTEMONE_KEY=...</code></pre>
   </section>
 
   <section id="trust">
     <h2>Why you can trust it with your computer</h2>
-    <p class="sub">Measured on our benchmarks (in the repo, <code>bench/</code>). The test sets are ours;
-      we publish them so you can check.</p>
-    <div class="numbers">
-      <div class="num"><b>0</b><span>false “yes” in 60 spoken answers, including hesitations and traps</span></div>
-      <div class="num"><b>0</b><span>risky actions let through on a set the gate had never seen (40 actions)</span></div>
-      <div class="num"><b>14 / 14</b><span>clicks on unlabeled 14–40 px icons, maximised window, half of them only pixels</span></div>
-      <div class="num"><b>~230 ms</b><span>per decision by Kev on a local GPU; vision only when needed</span></div>
+    <p class="sub">Measured with the benchmarks in the repo (<code>bench/</code>). We wrote the test sets
+      ourselves and publish them so you can check.</p>
+    <div class="figures">
+      <div class="figure"><b>0</b><span>false “yes” in 60 spoken answers, hesitations and trick answers included</span></div>
+      <div class="figure"><b>0</b><span>risky actions let through, on 40 actions the safety gate had never seen</span></div>
+      <div class="figure"><b>14/14</b><span>clicks on unlabelled 14–40 px icons, half of them found only by pixels</span></div>
+      <div class="figure"><b>230 ms</b><span>per decision by Kev on a local GPU; vision only when needed</span></div>
     </div>
-    <table>
-      <tr><th>Rule</th><th>Why</th></tr>
-      <tr><td>Passwords never reach a model</td><td>Stored logins live in Windows Credential Manager; code types them into fields the OS marks as password fields.</td></tr>
-      <tr><td>A “no” ends the task</td><td>After you refuse, Iris may not look for another way in the same turn.</td></tr>
-      <tr><td>Only what the screen shows</td><td>“Sent” is said only when the text has left the input box; results are read from the screen.</td></tr>
-      <tr><td>Clicks stay in the right window</td><td>The target window is brought to the front and every pixel click is checked to land inside it.</td></tr>
-      <tr><td>Do-not-touch list</td><td>Apps you list (your banking app, your real account) are never read or clicked.</td></tr>
-    </table>
+    <ul class="rules">
+      <li><b>Passwords never reach a model.</b><span>Logins live in Windows Credential Manager. Code types them into fields Windows marks as password fields.</span></li>
+      <li><b>A “no” ends the task.</b><span>After you refuse, Iris can't look for another way in the same turn.</span></li>
+      <li><b>It reports only what the screen shows.</b><span>“Sent” means the text has left the input box. Results are read, not guessed.</span></li>
+      <li><b>Clicks stay in the right window.</b><span>The target window comes to the front, and every pixel click is checked to land inside it.</span></li>
+      <li><b>You choose apps it never touches.</b><span>List your banking app or your real account, and Iris won't read or click them.</span></li>
+    </ul>
   </section>
 
   <section id="try">
-    <h2>Try it on your PC</h2>
-    <p class="sub">Iris is a Windows program, not a website: it works on your screen, in your apps. Setup takes about 15 minutes, most of it a one-time download of the local model.</p>
-    <div class="note"><b>You need:</b> Windows 10/11, an NVIDIA GPU with about 10 GB free (for Kev),
-      a microphone and headphones, a free <a href="https://www.assemblyai.com/dashboard/signup">AssemblyAI key</a>,
-      and Claude (a Claude Code login or an Anthropic API key).</div>
-    <ol class="steps">
-      <li>Get the code:
+    <h2>Install on your PC</h2>
+    <p class="sub">Iris is a Windows program, not a website: it works on your screen, in your apps. Setup takes
+      about 15 minutes, most of it a one-time download of the local model.</p>
+    <div class="need"><b>You need</b> Windows 10 or 11, an NVIDIA GPU with about 10 GB free (for Kev), a microphone
+      and headphones, a free <a href="https://www.assemblyai.com/dashboard/signup">AssemblyAI key</a>, and Claude
+      (a Claude Code login or an Anthropic API key).</div>
+    <ol class="install">
+      <li><div>Get the code.
         <pre><code>git clone https://github.com/Whom-m0rty/Iris-voice-agent
-cd Iris-voice-agent</code></pre></li>
-      <li>Install (downloads Kev and the Python packages, asks for your keys):
-        <pre><code>powershell -ExecutionPolicy Bypass -File install.ps1</code></pre></li>
-      <li>Optional: connect Gmail (<code>python voice\mcp_servers\mail.py login</code>) and list apps Iris must never touch in <code>protected_apps.txt</code>.</li>
-      <li>Start, put on headphones, and talk:
+cd Iris-voice-agent</code></pre></div></li>
+      <li><div>Install. This downloads Kev and the Python packages, then asks for your keys.
+        <pre><code>powershell -ExecutionPolicy Bypass -File install.ps1</code></pre></div></li>
+      <li><div>Optional: connect Gmail with <code>python voice\mcp_servers\mail.py login</code>, and list apps Iris
+        must never touch in <code>protected_apps.txt</code>.</div></li>
+      <li><div>Start it, put on headphones, and talk.
         <pre><code>powershell -ExecutionPolicy Bypass -File run_demo.ps1</code></pre>
-        Try “What's the newest file in my Downloads folder?” or “Find a video on how to bake bread and play it.”</li>
+        Try “What's the newest file in my Downloads folder?” or “Find a video on how to bake bread and play it.”</div></li>
     </ol>
   </section>
 
   <section>
     <h2>What it can't do yet</h2>
-    <ul class="honest">
-      <li>English only for now (the speech models understand 18 languages; the voice and prompts are English).</li>
-      <li>It works in apps that are already open; it doesn't launch programs yet.</li>
-      <li>Long flows on heavy websites are slow: each vision step takes 2–7 seconds.</li>
-      <li>Locally, Kev needs an NVIDIA GPU; Jev in the cloud speaks the same API but we have not benchmarked it.</li>
-      <li>Which Gateway models you can use depends on your AssemblyAI plan: our hackathon account had Qwen 3.5 4B, rate-limited.</li>
+    <ul class="limits">
+      <li>English only for now. The speech models understand 18 languages; the voice and prompts are English.</li>
+      <li>It works in apps that are already open. It doesn't launch programs yet.</li>
+      <li>Long flows on heavy websites are slow: each vision step takes 2 to 7 seconds.</li>
+      <li>Kev needs an NVIDIA GPU. Jev in the cloud speaks the same API, but we haven't benchmarked it.</li>
+      <li>Which Gateway models you can use depends on your AssemblyAI plan. Our hackathon account had Qwen 3.5 4B, rate-limited.</li>
     </ul>
   </section>
+  </main>
 
   <footer>
-    Built for the lablab.ai × AssemblyAI Voice Agent Hackathon, September 2026 · MIT license ·
-    Speech by <a href="https://www.assemblyai.com">AssemblyAI</a> · Decisions by
-    <a href="https://github.com/jaredpalmer/kev">Kev</a> · Planning and vision by Claude ·
-    <a href="https://github.com/Whom-m0rty/Iris-voice-agent">GitHub</a>
+    <p>Built for the lablab.ai × AssemblyAI Voice Agent Hackathon, September 2026. MIT license.
+      Speech by <a href="https://www.assemblyai.com">AssemblyAI</a>, decisions by
+      <a href="https://github.com/jaredpalmer/kev">Kev</a>, planning and vision by Claude.
+      Source on <a href="https://github.com/Whom-m0rty/Iris-voice-agent">GitHub</a>.</p>
+    <p>Set in Atkinson Hyperlegible, a typeface the Braille Institute designed for readers with low vision.</p>
   </footer>
 </div>
+<script>
+  (function () {
+    var items = Array.prototype.slice.call(document.querySelectorAll("#talk > li"));
+    var timers = [];
+    var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    function play() {
+      timers.forEach(clearTimeout); timers = [];
+      items.forEach(function (el) { el.classList.remove("shown", "speaking"); });
+      if (still) { items.forEach(function (el) { el.classList.add("shown"); }); return; }
+      var t = 300;
+      items.forEach(function (el) {
+        var words = el.textContent.split(/\s+/).length;
+        timers.push(setTimeout(function () {
+          items.forEach(function (o) { o.classList.remove("speaking"); });
+          el.classList.add("shown");
+          if (el.classList.contains("iris")) el.classList.add("speaking");
+        }, t));
+        t += el.classList.contains("did") ? 700 : 500 + words * 170;
+      });
+      timers.push(setTimeout(function () { items.forEach(function (o) { o.classList.remove("speaking"); }); }, t));
+    }
+    document.getElementById("replay").addEventListener("click", play);
+    play();
+  })();
+</script>
 </body>
 </html>
