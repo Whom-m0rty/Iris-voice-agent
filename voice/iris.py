@@ -121,6 +121,30 @@ class Brain:
         raise RuntimeError("brain process exited")
 
 
+class APIBrain:
+    """Same contract as Brain, on the Anthropic API (BRAIN_BACKEND=api, ANTHROPIC_API_KEY)."""
+
+    def __init__(self, prompt: str):
+        import anthropic
+        self.client = anthropic.Anthropic()
+        self.model = os.environ.get("BRAIN_API_MODEL", "claude-haiku-4-5-20251001")
+        self.prompt = prompt
+        self.history: list[dict] = []
+
+    def ask(self, text: str) -> tuple[dict, float]:
+        t = time.perf_counter()
+        self.history.append({"role": "user", "content": text})
+        r = self.client.messages.create(model=self.model, max_tokens=600, system=self.prompt,
+                                        messages=self.history[-40:])
+        reply = r.content[0].text
+        self.history.append({"role": "assistant", "content": reply})
+        return extract_json(reply), (time.perf_counter() - t) * 1000
+
+
+def make_brain(prompt: str):
+    return APIBrain(prompt) if os.environ.get("BRAIN_BACKEND") == "api" else Brain(prompt)
+
+
 class Voice:
     """Neural TTS, sentence by sentence, so the first words play while the rest is synthesized."""
 
@@ -177,7 +201,7 @@ class Iris:
         self.bridge = MCPBridge(MCP_SERVERS if mcp_servers is None else mcp_servers).start()
         self.speaker = Speaker()
         self.voice = Voice(self.speaker)
-        self.brain = Brain(self._prompt())
+        self.brain = make_brain(self._prompt())
         self.turns: queue.Queue[str] = queue.Queue()      # finished user turns for the worker
         self.answers: queue.Queue[str] = queue.Queue()    # user turns while a yes/no is pending
         self.awaiting_answer = False

@@ -22,4 +22,5 @@ Start-Process $edge -ArgumentList "--app=file:///$($root -replace '\\','/')/voic
 
 # 4. Voice session (foreground, so its log stays visible)
 Set-Location "$root\voice"
-& $py client.py
+& $py iris.py        # main: AssemblyAI streaming STT + Claude + neural TTS
+# & $py client.py    # second backend: everything on the AssemblyAI Voice Agent API
