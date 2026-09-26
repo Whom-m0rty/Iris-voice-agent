@@ -1,6 +1,7 @@
 """Demo overlay: a large "ghost" cursor with a shimmering glow that glides to where the
 agent acts, a ripple on each click, and a frame around the target coloured by who decided
-(Kev = green, Claude vision = violet, waiting for a spoken yes = red).
+(Kev = green, Claude vision = violet, waiting for a spoken yes = red). While the mic is
+muted, a large red MUTED badge sits at the top of the screen.
 
 It is only a visual: the real clicks go through UI Automation. The window covers the whole
 desktop, stays on top and lets every mouse event through.
@@ -80,6 +81,8 @@ class Overlay(QWidget):
         self.hidden_until = 0.0
         self.panel = overlay_panel.PanelModel()
         self.last_event = time.time()
+        self.muted = False
+        self.screen_top = QGuiApplication.primaryScreen().geometry()
 
         self.anim = QVariantAnimation(self, duration=GLIDE_MS, easingCurve=QEasingCurve.InOutCubic)
         self.anim.valueChanged.connect(self._moved)
@@ -125,6 +128,8 @@ class Overlay(QWidget):
         elif kind == "click":
             p = self._local(ev["x"], ev["y"])
             self.ripples.append((p, time.time(), VIA.get(ev.get("via", "kev"), VIA["kev"])))
+        elif kind == "mute":
+            self.muted = bool(ev.get("muted"))
         elif kind in ("target_clear", "task_done"):
             self.target = None
         elif kind == "overlay_hide":          # the agent is taking a screenshot for the model
@@ -163,6 +168,23 @@ class Overlay(QWidget):
             overlay_panel.draw(p, self.panel, self.width(), self.height(), self.phase)
         if self.visible_cursor:
             self._draw_cursor(p)
+        if self.muted:
+            self._draw_muted(p)
+
+    def _draw_muted(self, p: QPainter):
+        text = "MUTED  ·  Iris can't hear you  ·  Ctrl+Alt+M"
+        p.setFont(QFont("Segoe UI", 20, QFont.Bold))
+        w = p.fontMetrics().horizontalAdvance(text) + 64
+        top = self._local(self.screen_top.x(), self.screen_top.y())
+        pill = QRectF(top.x() + (self.screen_top.width() - w) / 2, top.y() + 24, w, 60)
+        pulse = 0.6 + 0.4 * math.sin(math.radians(self.phase * 2))
+        glow = QColor(VIA["confirm"])
+        glow.setAlpha(int(90 * pulse))
+        p.setPen(QPen(glow, 12))
+        p.setBrush(QColor(150, 30, 24, 235))
+        p.drawRoundedRect(pill, 30, 30)
+        p.setPen(QColor(255, 255, 255))
+        p.drawText(pill, Qt.AlignCenter, text)
 
     def _draw_target(self, p: QPainter):
         color = QColor(VIA.get(self.target_via, VIA["kev"]))

@@ -56,6 +56,27 @@
   .stat span { color: var(--muted); font-size: 13px; }
   .result { margin-top: 10px; font-weight: 600; }
   .result.ok { color: var(--kev); } .result.bad { color: var(--confirm); }
+
+  /* mute: the biggest thing on the panel, one click or Ctrl+Alt+M */
+  .mute { display: flex; align-items: center; gap: 16px; width: 100%; min-height: 92px; padding: 14px 20px;
+          border: 2px solid var(--kev); border-radius: 18px; background: #14271c; color: var(--text);
+          font: inherit; text-align: left; cursor: pointer; transition: background .15s, border-color .15s; }
+  .mute:hover { background: #193322; }
+  .mute:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  .mute:disabled { border-color: var(--line); background: var(--card); color: var(--muted); cursor: default; }
+  .mute svg { flex: none; width: 46px; height: 46px; }
+  .mute .big { display: block; font-size: 26px; font-weight: 700; line-height: 1.1; }
+  .mute .small { display: block; margin-top: 4px; color: var(--muted); font-size: 15px; }
+  .mute .keys { white-space: nowrap; }
+  .mute kbd { font: 600 13px "Segoe UI", system-ui, sans-serif; padding: 1px 7px; border-radius: 6px;
+              border: 1px solid #3a3d4a; background: #22242d; color: var(--text); }
+  .mute .off { display: none; }
+  .mute[aria-pressed="true"] { border-color: var(--confirm); background: #3a1512; }
+  .mute[aria-pressed="true"]:hover { background: #461a16; }
+  .mute[aria-pressed="true"] .on { display: none; }
+  .mute[aria-pressed="true"] .off { display: inline; }
+  .mute[aria-pressed="true"] .small { color: #f3b1a9; }
+  body.muted { box-shadow: inset 0 0 0 4px var(--confirm); min-height: 100vh; }
 </style>
 </head>
 <body>
@@ -65,6 +86,19 @@
     <h1>Iris</h1>
     <div class="status"><div class="dot" id="dot"></div><span id="status">connecting…</span></div>
   </header>
+
+  <button class="mute" id="mute" type="button" aria-label="Mute Iris" aria-pressed="false" disabled>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+         stroke-linejoin="round" aria-hidden="true">
+      <rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M8 22h8"/>
+      <path class="off" d="M3 3l18 18" stroke-width="2.6"/>
+    </svg>
+    <span>
+      <span class="big" id="muteBig">Listening</span>
+      <span class="small"><span class="on">Click to mute</span><span class="off">Iris can't hear you. Click to unmute</span></span>
+      <span class="small keys">or press <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>M</kbd></span>
+    </span>
+  </button>
 
   <div class="card confirm" id="confirm" role="alert">
     <div class="label">Waiting for a spoken yes</div>
@@ -98,6 +132,18 @@
 const $ = id => document.getElementById(id);
 const stats = { kev: 0, vision: 0, kevMs: [], mcp: 0, ask: 0, no: 0 };
 let plan = [];
+let bus = null;
+
+function setMuted(m) {
+  $("mute").setAttribute("aria-pressed", m);
+  $("muteBig").textContent = m ? "Muted" : "Listening";
+  document.body.classList.toggle("muted", m);
+  if (m) setStatus("wait", "muted");
+  else if ($("status").textContent === "muted") setStatus("live", "listening");
+}
+$("mute").onclick = () => {
+  if (bus && bus.readyState === WebSocket.OPEN) bus.send(JSON.stringify({ kind: "cmd", cmd: "toggle_mute" }));
+};
 
 function setStatus(kind, text) { $("dot").className = "dot " + kind; $("status").textContent = text; }
 function esc(s) { return String(s ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
@@ -178,16 +224,17 @@ function on(ev) {
       setStatus("live", "listening");
       break;
     case "stop": setStatus("wait", "stopping"); break;
-    case "closed": setStatus("", "disconnected"); break;
+    case "mute": $("mute").disabled = false; setMuted(ev.muted); break;
+    case "closed": setStatus("", "disconnected"); $("mute").disabled = true; break;
     case "error": addChat("agent", "⚠ " + (ev.message || ev.code)); break;
   }
 }
 
 function connect() {
-  const ws = new WebSocket("ws://127.0.0.1:8770");
+  const ws = bus = new WebSocket("ws://127.0.0.1:8770");
   ws.onopen = () => setStatus("live", "connected");
   ws.onmessage = e => { try { on(JSON.parse(e.data)); } catch (err) { console.error(err); } };
-  ws.onclose = () => { setStatus("", "reconnecting…"); setTimeout(connect, 1000); };
+  ws.onclose = () => { setStatus("", "reconnecting…"); $("mute").disabled = true; setTimeout(connect, 1000); };
 }
 connect();
 </script>

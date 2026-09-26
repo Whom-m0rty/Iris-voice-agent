@@ -45,6 +45,9 @@ Around both:
   servers' own `readOnlyHint` / `destructiveHint` feed the safety gate.
 - **Passwords never reach a model**: stored logins live in Windows Credential Manager and are
   typed by code into fields UI Automation marks as password fields.
+- **Mute**: Ctrl+Alt+M from any app, the button on `voice/panel.html`, or "stop listening".
+  A chime and a spoken line say which state you are in. Muted, the mic sends silence, so a
+  pending yes/no can only end as a no. Unmuting needs the key or the button.
 - **Brain / vision backends**: a local Claude Code login (`claude -p`, personal use) or the
   Anthropic API (`ANTHROPIC_API_KEY`).
 

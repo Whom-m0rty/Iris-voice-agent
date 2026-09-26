@@ -11,11 +11,18 @@ log inside the system prompt (`session.update`), so the agent remembers it later
 Confirmation answers are judged on the user's exact words (`transcript.user`) by
 Kev, not on the voice LLM's paraphrase.
 
+Mute: Ctrl+Alt+M (global, Windows), the big button on the observer panel, or saying
+"stop listening". Muted, the mic sends silence, so nothing the user says reaches the model
+and a pending confirmation can only time out as "no". Iris keeps talking and a running task
+keeps going. Unmuting needs the key or the button: with the mic off she cannot hear "unmute".
+
 Run:  python client.py            (needs ASSEMBLYAI_API_KEY in ../.env and Kev on :8009)
 """
+import array
 import asyncio
 import base64
 import json
+import math
 import os
 import queue
 import sys
@@ -81,6 +88,8 @@ yes/no question that says plainly what will happen (who gets the message, what i
 say nothing else - the app judges the answer itself.
 
 If the user says stop or cancel while a task runs, call stop_task.
+If the user asks you to stop listening or to mute, call mute_microphone. After that you hear
+nothing until they press Control Alt M or the big button on the panel.
 Never claim something was done unless the task log says so."""
 
 TOOLS = [
@@ -103,6 +112,10 @@ TOOLS = [
      "description": "Stop the running task.",
      "parameters": {"type": "object", "properties": {}},
      "execution_mode": "interactive", "timeout_seconds": 10},
+    {"type": "function", "name": "mute_microphone",
+     "description": "Stop listening to the user. Only a key press or the panel button unmutes.",
+     "parameters": {"type": "object", "properties": {}},
+     "execution_mode": "interactive", "timeout_seconds": 10},
 ]
 
 
@@ -114,13 +127,55 @@ def describe_mcp_action(tool: str, args: dict) -> str:
         return f'Send an email to {args.get("to", "?")} saying "{args.get("text", "")}"?'
     shown = ", ".join(f"{k}: {v}" for k, v in args.items())
     return f"Run {tool.replace('_', ' ')} ({shown})?"
+def _chime(freqs: tuple[int, ...], note_ms: int = 110) -> bytes:
+    """Short tones, one after another, PCM16 at RATE. Falling = muted, rising = listening."""
+    out = array.array("h")
+    n = RATE * note_ms // 1000
+    for f in freqs:
+        for i in range(n):
+            env = min(1.0, i / 240, (n - i) / 240)        # 10 ms fade in/out, no clicks
+            out.append(int(9000 * env * math.sin(2 * math.pi * f * i / RATE)))
+    return out.tobytes()
+
+
+CHIME_MUTED = _chime((880, 587))
+CHIME_LISTENING = _chime((587, 880))
+
+
+def watch_hotkey(on_press, name: str = "Ctrl+Alt+M") -> bool:
+    """Global hotkey via RegisterHotKey (Windows, no admin). Returns False if it is taken."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    from ctypes import wintypes
+    MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, VK_M, WM_HOTKEY = 0x1, 0x2, 0x4000, 0x4D, 0x0312
+    ok = threading.Event()
+    failed = threading.Event()
+
+    def loop():
+        user32 = ctypes.windll.user32
+        if not user32.RegisterHotKey(None, 1, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_M):
+            failed.set()
+            return
+        ok.set()
+        msg = wintypes.MSG()
+        while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:   # hotkeys arrive on this thread
+            if msg.message == WM_HOTKEY:
+                on_press()
+
+    threading.Thread(target=loop, daemon=True, name=f"hotkey {name}").start()
+    while not (ok.is_set() or failed.is_set()):
+        time.sleep(0.01)
+    return ok.is_set()
 
 
 class Speaker:
-    """Plays reply.audio; flush() drops what is queued when the user interrupts."""
+    """Plays reply.audio; flush() drops what is queued when the user interrupts.
+    A chime plays at once, ahead of queued speech, which resumes after it."""
 
     def __init__(self):
         self.buf = bytearray()
+        self.chime_buf = bytearray()
         self.lock = threading.Lock()
         self.stream = sd.RawOutputStream(samplerate=RATE, channels=1, dtype="int16",
                                          callback=self._cb, blocksize=MIC_BLOCK)
@@ -129,8 +184,9 @@ class Speaker:
     def _cb(self, out, frames, _t, _s):
         n = frames * 2
         with self.lock:
-            chunk = bytes(self.buf[:n])
-            del self.buf[:n]
+            src = self.chime_buf if self.chime_buf else self.buf
+            chunk = bytes(src[:n])
+            del src[:n]
         out[:] = chunk + b"\x00" * (n - len(chunk))
 
     def play(self, pcm: bytes):
@@ -140,6 +196,10 @@ class Speaker:
     def flush(self):
         with self.lock:
             self.buf.clear()
+
+    def chime(self, pcm: bytes):
+        with self.lock:
+            self.chime_buf[:] = pcm
 
 
 class VoiceSession:
@@ -163,6 +223,8 @@ class VoiceSession:
         self._unanswered_user: str | None = None   # user text the agent has not reacted to yet
         self.empty_replies = 0
         self.log: list[str] = []              # task log kept in the system prompt
+        self.muted = False
+        self.mute_lock = threading.Lock()
 
     # ---- sending ---------------------------------------------------------------
 
@@ -210,6 +272,36 @@ class VoiceSession:
         self.log.append(f"- {time.strftime('%H:%M')} {text}")
         self._queue({"type": "session.update", "session": {"system_prompt": self._prompt()}},
                     {"type": "reply.create", "instructions": speak or f"Briefly tell the user: {text}"})
+
+    # ---- mute ------------------------------------------------------------------
+
+    def set_muted(self, muted: bool, source: str):
+        """Thread-safe. The chime plays at once; Iris says it in words when she is free."""
+        with self.mute_lock:
+            if muted == self.muted:
+                return
+            self.muted = muted
+        self.speaker.chime(CHIME_MUTED if muted else CHIME_LISTENING)
+        self.emit({"kind": "mute", "muted": muted, "source": source})
+        if self.loop is None or self.ws is None:
+            return
+        if muted:
+            self.tell("The user muted the microphone. You cannot hear them now.",
+                      speak="In one short sentence, tell the user you stopped listening and that "
+                            "Control Alt M turns you back on.")
+        else:
+            self.tell("The user unmuted the microphone. You can hear them again.",
+                      speak="Say only: I'm listening.")
+
+    def toggle_mute(self, source: str):
+        self.set_muted(not self.muted, source)
+
+    def on_command(self, cmd: str):
+        """Commands from the observer panel (see events.py)."""
+        if cmd == "toggle_mute":
+            self.toggle_mute("panel")
+        elif cmd in ("mute", "unmute"):
+            self.set_muted(cmd == "mute", "panel")
 
     # ---- callbacks the screen agent uses ----------------------------------------
 
@@ -297,6 +389,9 @@ class VoiceSession:
             return "started"
         if name == "answer_confirmation":
             return "noted"                    # the answer itself comes from transcript.user
+        if name == "mute_microphone":
+            self.set_muted(True, "voice")
+            return "muted"
         if name == "stop_task":
             # the agent checks this before every action, so it stops within one step
             if self.agent:
@@ -319,6 +414,8 @@ class VoiceSession:
         with sd.RawInputStream(samplerate=RATE, channels=1, dtype="int16", blocksize=MIC_BLOCK, callback=cb):
             while True:
                 pcm = await q.get()
+                if self.muted:                # keep the stream steady, but nothing of the user in it
+                    pcm = bytes(len(pcm))
                 await self._send({"type": "input.audio", "audio": base64.b64encode(pcm).decode()})
 
     async def _events(self):
@@ -349,7 +446,7 @@ class VoiceSession:
             elif t == "transcript.user":
                 self.emit({"kind": "user", "text": ev["text"]})
                 self._unanswered_user = ev["text"]
-                if self.awaiting_answer:
+                if self.awaiting_answer and not self.muted:
                     self.answers.put(ev["text"])
             elif t == "transcript.agent":
                 self._reply_had_content = True
@@ -409,8 +506,19 @@ def console_and_bus():
     return emit
 
 
+def start(session: VoiceSession):
+    """Wire the mute controls (panel button, global hotkey) and run the session."""
+    import events
+    events.bus().on_command(session.on_command)
+    if not watch_hotkey(lambda: session.toggle_mute("hotkey")) and sys.platform == "win32":
+        session.emit({"kind": "error", "message": "Ctrl+Alt+M is taken by another app: "
+                                                  "mute only from the panel"})
+    session.emit({"kind": "mute", "muted": False, "source": "start"})
+    asyncio.run(session.run())
+
+
 if __name__ == "__main__":
     try:
-        asyncio.run(VoiceSession(emit=console_and_bus()).run())
+        start(VoiceSession(emit=console_and_bus()))
     except KeyboardInterrupt:
         pass

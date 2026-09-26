@@ -14,6 +14,10 @@ other backend, client.py, runs everything on AssemblyAI's Voice Agent API.
 Safety: risky actions are confirmed out loud, and the answer is judged by Kev on the
 user's exact words. Passwords never reach a model.
 
+Mute: Ctrl+Alt+M, the button on panel.html, or "stop listening". Muted, the mic sends silence
+and any turn still in flight is dropped, so nothing reaches the brain and a pending yes/no can
+only time out as a no. Iris keeps talking and a running task keeps going.
+
 Run:  python iris.py
 """
 import asyncio
@@ -37,7 +41,8 @@ import screen  # noqa: E402
 import vault  # noqa: E402
 import vision  # noqa: E402
 from agent import Agent, interpret_confirmation  # noqa: E402
-from client import MCP_SERVERS, Speaker, describe_mcp_action  # noqa: E402
+from client import (CHIME_LISTENING, CHIME_MUTED, MCP_SERVERS, Speaker,  # noqa: E402
+                    describe_mcp_action, watch_hotkey)
 from mcp_bridge import MCPBridge  # noqa: E402
 
 RATE = 24000
@@ -81,6 +86,8 @@ Tools:
   carries "text". To send, the last
   step is "click the Send button" - never press Enter. Keypads: one key per step.
 - stop_task(): stop the running task.
+- mute_microphone(): stop listening, when the user asks you to. After it you hear nothing until
+  they press Control Alt M.
 
 Rules:
 - Prefer direct tools (mail__...) when one fits: they are faster and reliable.
@@ -246,6 +253,8 @@ class Iris:
         self.speaking = False
         self.agent: Agent | None = None
         self.mic = mic                                    # None = real microphone
+        self.muted = False
+        self.mute_lock = threading.Lock()
         threading.Thread(target=vision.backend().warm, daemon=True).start()
 
     # ---- prompt -----------------------------------------------------------------
@@ -256,6 +265,29 @@ class Iris:
         return (BRAIN_PROMPT.replace("{TOOLS}", tools or "(no direct tools)")
                 .replace("{SECRETS}", ", ".join(vault.names()) or "none")
                 .replace("{WINDOWS}", "; ".join(screen.open_windows()[:15])))
+
+    # ---- mute -------------------------------------------------------------------------
+
+    def set_muted(self, muted: bool, source: str):
+        """Thread-safe. The chime plays at once, then Iris says it in words."""
+        with self.mute_lock:
+            if muted == self.muted:
+                return
+            self.muted = muted
+        self.speaker.chime(CHIME_MUTED if muted else CHIME_LISTENING)
+        self.emit({"kind": "mute", "muted": muted, "source": source})
+        self.say_async("I stopped listening. Press Control Alt M when you want me back." if muted
+                       else "I'm listening.")
+
+    def toggle_mute(self, source: str):
+        self.set_muted(not self.muted, source)
+
+    def on_command(self, cmd: str):
+        """Commands from the observer panel (see events.py)."""
+        if cmd == "toggle_mute":
+            self.toggle_mute("panel")
+        elif cmd in ("mute", "unmute"):
+            self.set_muted(cmd == "mute", "panel")
 
     # ---- speaking and listening ---------------------------------------------------
 
@@ -290,6 +322,9 @@ class Iris:
 
     def confirmed(self, question: str) -> bool:
         for attempt in range(3):
+            if self.muted:                    # nobody can answer: never act on silence
+                self.emit({"kind": "verdict", "said": "(muted)", "verdict": "no"})
+                return False
             said = self.ask_user(question if attempt == 0 else f"{question} Please say yes or no.")
             verdict = interpret_confirmation(said, question)
             self.emit({"kind": "verdict", "said": said, "verdict": verdict})
@@ -299,6 +334,8 @@ class Iris:
 
     def on_user_turn(self, text: str):
         """Called by the ears for every finished (merged) user turn."""
+        if self.muted:                        # said just before the mute: the user took it back
+            return
         self.emit({"kind": "user", "text": text})
         if self.awaiting_answer:
             self.answers.put(text)
@@ -309,6 +346,8 @@ class Iris:
             self.turns.put(text)
 
     def on_speech_started(self):
+        if self.muted:
+            return
         if self.speaking and not self.awaiting_answer:
             self.voice.stop()                 # barge-in: the user talks over Iris
 
@@ -322,6 +361,9 @@ class Iris:
             if self.agent:
                 self.agent.cancel.set()
             return "stopped"
+        if name == "mute_microphone":
+            self.set_muted(True, "voice")
+            return "muted; the user unmutes with Control Alt M"
         if name not in self.bridge.tools:
             return f"unknown tool {name}"
         bt = self.bridge.tools[name]
@@ -349,7 +391,7 @@ class Iris:
                    "steps": args.get("steps")})
         # progress lines are spoken in the background: the hands never wait for the voice
         agent = self.agent = Agent(say=lambda s: self.say_async(s) if s != "Looking at the screen." else None,
-                                   confirm=lambda q: self.ask_user(q))
+                                   confirm=lambda q: "no" if self.muted else self.ask_user(q))
         agent.on_event = self.emit
         t = time.perf_counter()
         try:
@@ -405,7 +447,7 @@ class Iris:
             async def pump():
                 if self.mic:                  # scripted phrases (tests)
                     async for chunk in self.mic(self):
-                        await ws.send(chunk)
+                        await ws.send(bytes(len(chunk)) if self.muted else chunk)
                     return
                 n = RATE * CHUNK_MS // 1000
 
@@ -416,7 +458,9 @@ class Iris:
                 with sd.RawInputStream(samplerate=RATE, channels=1, dtype="int16", blocksize=n,
                                        callback=cb, device=device):
                     while True:
-                        await ws.send(await audio_q.get())
+                        chunk = await audio_q.get()
+                        # muted: keep the stream alive, but nothing of the user in it
+                        await ws.send(bytes(len(chunk)) if self.muted else chunk)
 
             pump_task = asyncio.ensure_future(pump())
             parts: list[str] = []
@@ -470,8 +514,18 @@ def console_and_bus():
     return emit
 
 
+def start(iris: Iris):
+    """Wire the mute controls (panel button, global hotkey) and run."""
+    import events
+    events.bus().on_command(iris.on_command)
+    if not watch_hotkey(lambda: iris.toggle_mute("hotkey")) and sys.platform == "win32":
+        iris.emit({"kind": "error", "message": "Ctrl+Alt+M is taken by another app: mute only from the panel"})
+    iris.emit({"kind": "mute", "muted": False, "source": "start"})
+    iris.run()
+
+
 if __name__ == "__main__":
     try:
-        Iris(emit=console_and_bus()).run()
+        start(Iris(emit=console_and_bus()))
     except KeyboardInterrupt:
         pass

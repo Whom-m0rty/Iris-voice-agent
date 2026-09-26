@@ -18,6 +18,7 @@ BADGE = {"kev": QColor(46, 204, 113), "vision": QColor(155, 89, 255), "mcp": QCo
 
 class PanelModel:
     def __init__(self):
+        self.muted = False                               # survives reset(): it is the mic, not the session
         self.reset()
 
     def reset(self):
@@ -88,6 +89,8 @@ class PanelModel:
             self.status, self.status_kind = "listening", "live"
         elif k == "stop":
             self.status, self.status_kind = "stopping", "wait"
+        elif k == "mute":
+            self.muted = bool(ev.get("muted"))
         self.chat = self.chat[-6:]
         self.steps = self.steps[-7:]
 
@@ -124,6 +127,10 @@ def draw(p: QPainter, m: PanelModel, screen_w: float, screen_h: float, phase: fl
     p.setPen(Qt.NoPen)
     p.setBrush(BG)
     p.drawRect(QRectF(x0, 0, WIDTH, screen_h))
+    if m.muted:                                          # the whole panel is framed red while muted
+        p.setPen(QPen(BADGE["confirm"], 4))
+        p.setBrush(Qt.NoBrush)
+        p.drawRect(QRectF(x0 + 2, 2, WIDTH - 4, screen_h - 4))
     pad, x, w = 16, x0 + 16, WIDTH - 32
     y = 16.0
     f_title = QFont("Segoe UI", 17, QFont.DemiBold)
@@ -141,13 +148,14 @@ def draw(p: QPainter, m: PanelModel, screen_w: float, screen_h: float, phase: fl
     p.setFont(f_title)
     p.setPen(TEXT)
     p.drawText(QRectF(x + 44, y, 120, 34), Qt.AlignVCenter, "Iris")
-    dot = {"live": BADGE["kev"], "work": QColor("#d97757"), "wait": BADGE["confirm"]}[m.status_kind]
-    if m.status_kind != "live" and int(phase / 20) % 2:
+    status, kind = ("muted", "wait") if m.muted else (m.status, m.status_kind)
+    dot = {"live": BADGE["kev"], "work": QColor("#d97757"), "wait": BADGE["confirm"]}[kind]
+    if kind != "live" and int(phase / 20) % 2:
         dot = QColor(dot.red(), dot.green(), dot.blue(), 110)
     p.setFont(f_body)
-    sw = QFontMetrics(f_body).horizontalAdvance(m.status)
+    sw = QFontMetrics(f_body).horizontalAdvance(status)
     p.setPen(MUTED)
-    p.drawText(QRectF(x + w - sw, y, sw, 34), Qt.AlignVCenter, m.status)
+    p.drawText(QRectF(x + w - sw, y, sw, 34), Qt.AlignVCenter, status)
     p.setPen(Qt.NoPen)
     p.setBrush(dot)
     p.drawEllipse(QRectF(x + w - sw - 18, y + 12, 10, 10))
