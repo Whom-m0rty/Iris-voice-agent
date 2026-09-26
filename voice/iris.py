@@ -14,6 +14,12 @@ other backend, client.py, runs everything on AssemblyAI's Voice Agent API.
 Safety: risky actions are confirmed out loud, and the answer is judged by Kev on the
 user's exact words. Passwords never reach a model.
 
+Accessibility: a soft tick while Iris thinks, a chime when an action is done, a low tone on
+an error; "what's on my screen", "what can I do here", "I'm lost" and picture descriptions
+(agent/look.py); "show me how" runs a task slowly, narrating each step; "say that again"
+repeats the last reply without asking the brain; the pause that ends a turn is adjustable
+by voice and remembered (iris_prefs.json).
+
 Mute: Ctrl+Alt+M, the button on panel.html, or "stop listening". Muted, the mic sends silence
 and any turn still in flight is dropped, so nothing reaches the brain and a pending yes/no can
 only time out as a no. Iris keeps talking and a running task keeps going.
@@ -40,9 +46,10 @@ import env  # noqa: E402,F401  (loads ../.env)
 import browser  # noqa: E402
 import screen  # noqa: E402
 import vault  # noqa: E402
+import look  # noqa: E402
 import vision  # noqa: E402
 from agent import Agent, interpret_confirmation  # noqa: E402
-from client import (CHIME_LISTENING, CHIME_MUTED, MCP_SERVERS, Speaker,  # noqa: E402
+from client import (CHIME_LISTENING, CHIME_MUTED, MCP_SERVERS, Speaker, _chime,  # noqa: E402
                     describe_mcp_action, watch_hotkey)
 from mcp_bridge import MCPBridge  # noqa: E402
 
@@ -51,11 +58,37 @@ STT_URL = ("wss://streaming.assemblyai.com/v3/ws?sample_rate=24000&format_turns=
            f"&speech_model={os.environ.get('STT_MODEL', 'universal-3-6-pro')}")
 CHUNK_MS = 100                                  # AssemblyAI wants 50-1000 ms per message
 MERGE_S = float(os.environ.get("MERGE_PAUSE_S", "1.3"))   # a pause shorter than this continues the turn
+PAUSE_RANGE = (0.8, 4.0)                        # what "wait longer for me" may set it to
+PREFS_FILE = os.path.join(HERE, "..", "iris_prefs.json")
+# earcons: silence is confusing when you cannot see the screen
+TICK = _chime((1320,), note_ms=28, volume=2600)            # soft, once a second while thinking
+DONE = _chime((784, 988, 1175), note_ms=80, volume=6000)   # rising: the action is done
+ERROR = _chime((262, 196), note_ms=160, volume=7000)       # low, falling: something went wrong
+TICK_AFTER_S = 0.7                              # no tick for answers faster than this
+ACTION_TOOLS = {"do_task", "browser_search", "browser_open", "browser_back", "switch_to"}
+FAILED = re.compile(r"^(ERROR|Something went wrong|Stopped at|No browser|I could not|.* is not open on the screen)", re.I)
+# the whole turn must be the request: "pardon me, open my email" is a request, not a repeat
+REPEAT = re.compile(r"^\W*((sorry|excuse me|pardon|what)\W+)?(say (that|it) again|repeat( that| it| again)*|"
+                    r"what did you (just )?say|come again|pardon( me)?|i didn'?t (hear|catch) (that|you))"
+                    r"\W*(please)?\W*$", re.I)
 # sonnet: measured 26-27.09 - barely slower than haiku here, but haiku misread the screen
 # ("12 x 3 = 36" while it showed 1 x 3 = 3) and made sloppier plans
 BRAIN_MODEL = os.environ.get("BRAIN_MODEL", "sonnet")
 TTS_VOICE = os.environ.get("TTS_VOICE", "en-US-AvaMultilingualNeural")
 MIC_NAME = os.environ.get("MIC_NAME", "K66")        # input device, matched by name
+
+
+def load_prefs() -> dict:
+    try:
+        with open(PREFS_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_prefs(prefs: dict) -> None:
+    with open(PREFS_FILE, "w", encoding="utf-8") as f:
+        json.dump(prefs, f, indent=1)
 
 
 def mic_device() -> int | None:
@@ -70,6 +103,17 @@ STOP_WORDS = re.compile(r"^\W*(stop|cancel|wait|hold on|never mind)\b", re.I)
 
 BRAIN_PROMPT = """You are the brain of Iris, a calm voice assistant that operates a Windows PC for a person who
 cannot see the screen or is not comfortable with computers.
+
+How you talk: short, warm, plain sentences, like a patient friend sitting next to them.
+This is for "say" and "explain", the only text the user hears. Tool names, arguments and
+steps keep the technical words (window, click, scroll): the user never hears those.
+In what you say, never use computer words. Instead of window, app or browser, name the
+thing: "your email", "the internet", "YouTube". Instead of scroll: "further down" or
+"further up". Instead of menu: "the list of choices". Instead of pop-up or dialog: "a box
+has come up asking...". Instead of field: "the box for your password". Never say click,
+tab, icon, cursor or URL.
+Say what happened to the person's things: "I opened your email", "Peter's message is on
+the screen now", "I pressed Send".
 
 Every reply is ONE JSON object and nothing else:
 {"say": "<what to say now, one or two short plain sentences, or empty>",
@@ -88,19 +132,39 @@ Tools:
   step is "click the Send button" - never press Enter. Keypads: one key per step.
 - stop_task(): stop the running task.
 - mute_microphone(): stop listening, when the user asks you to. After it you hear nothing until
-  they press Control Alt M.
+  they hold Control and Alt, and press M.
 - browser_search(site, query): open search results on a site in the user's browser. site is one
   of: google, youtube, amazon.it, amazon.com, wikipedia.
 - browser_open(url): open an address in the user's browser (a product page, a known site).
 - browser_back(): go back one page in the browser.
 - read_screen(window): the text a window shows now, to answer questions about it ("how much is
   it?", "what does the page say?") without clicking anything.
+- describe_screen(window, detail, question): tell the user what is in front of them.
+  detail "brief" for "what's on my screen?" / "where am I?"; "actions" for "what can I do
+  here?"; "pictures" for "what's in the photo?" (question = what they want to know);
+  "lost" for "I'm lost" / "what happened?". window may be empty: the one in front.
+- switch_to(window): bring one of the open windows to the front ("go back to my email").
+- set_pause(seconds): how long you wait before deciding the user finished speaking (now
+  {PAUSE} s, allowed 0.8 to 4). Raise it by about 1 s when they say you cut them off or they need
+  more time; lower it when they say you are slow to answer.
+- do_task can also teach: add "teach": true when the user asks to be shown how ("show me how
+  to reply"), and give EVERY step an "explain" (required when teach is true): one plain
+  sentence saying what you do and where it is ("Now I press Reply, the arrow at the top right of the message."). It runs slowly.
 
 Rules:
 - Prefer direct tools (mail__...) when one fits: they are faster and reliable.
 - On the web, jump instead of clicking through menus: browser_search / browser_open first, then
   do_task only for the clicks that are left (open a result, add to basket, press play).
 - To answer a question about what is on the screen, use read_screen, not do_task.
+- Describing the screen: say where they are first, pop-ups before anything else, then at
+  most three things that matter. Never read out menus or toolbars. Offer one next step.
+  "What can I do here?": name the three most useful things, as things they can ask you for.
+  "I'm lost": say calmly where they are; if a pop-up is open, say what it asks and offer to
+  close it or answer it; offer to go back to one of their other windows. Never close or
+  answer a pop-up without asking.
+- When a message or page has a photo or picture, say so, and describe it with describe_screen
+  "pictures" when the user asks or when the picture is the point of the message.
+- Password fields: say there is one, never what is in it.
 - Scrolling: a do_task step can be "scroll down", "scroll up", "scroll down to the bottom".
 - When asked whether someone wrote, find the message and read it out right away: who, and what it says.
 - When the user dictates a message, use all of their words.
@@ -261,16 +325,22 @@ class Iris:
         self.bridge = MCPBridge(MCP_SERVERS if mcp_servers is None else mcp_servers).start()
         self.speaker = Speaker()
         self.voice = Voice(self.speaker)
-        self.brain = make_brain(self._prompt())
         self.turns: queue.Queue[str] = queue.Queue()      # finished user turns for the worker
         self.answers: queue.Queue[str] = queue.Queue()    # user turns while a yes/no is pending
         self.awaiting_answer = False
         self.speaking = False
         self.agent: Agent | None = None
         self.mic = mic                                    # None = real microphone
+        self.prefs = load_prefs()
+        self.merge_s = float(self.prefs.get("pause_s", MERGE_S))
+        self.last_said = ""                               # for "say that again"
+        self.busy_since: float | None = None              # a user turn is being worked on
+        self.last_ok = True                               # outcome of the last screen task
         self.muted = False
         self.mute_lock = threading.Lock()
+        self.brain = make_brain(self._prompt())
         threading.Thread(target=vision.backend().warm, daemon=True).start()
+        threading.Thread(target=self._ticker, daemon=True).start()
 
     # ---- prompt -----------------------------------------------------------------
 
@@ -279,7 +349,8 @@ class Iris:
                           f"{t['description']}" for t in self.bridge.voice_tools())
         return (BRAIN_PROMPT.replace("{TOOLS}", tools or "(no direct tools)")
                 .replace("{SECRETS}", ", ".join(vault.names()) or "none")
-                .replace("{WINDOWS}", "; ".join(screen.open_windows()[:15])))
+                .replace("{WINDOWS}", "; ".join(screen.open_windows()[:15]))
+                .replace("{PAUSE}", f"{self.merge_s:.1f}"))
 
     # ---- mute -------------------------------------------------------------------------
 
@@ -291,8 +362,8 @@ class Iris:
             self.muted = muted
         self.speaker.chime(CHIME_MUTED if muted else CHIME_LISTENING)
         self.emit({"kind": "mute", "muted": muted, "source": source})
-        self.say_async("I stopped listening. Press Control Alt M when you want me back." if muted
-                       else "I'm listening.")
+        self.say_async("I've stopped listening. To bring me back, hold Control and Alt, and press M."
+                       if muted else "I'm listening.")
 
     def toggle_mute(self, source: str):
         self.set_muted(not self.muted, source)
@@ -304,11 +375,36 @@ class Iris:
         elif cmd in ("mute", "unmute"):
             self.set_muted(cmd == "mute", "panel")
 
+    # ---- sounds -------------------------------------------------------------------------
+
+    def _ticker(self):
+        """A soft tick once a second while a turn is being worked on and nothing else plays."""
+        last = 0.0
+        while True:
+            time.sleep(0.1)
+            since = self.busy_since
+            now = time.perf_counter()
+            if (since is None or now - since < TICK_AFTER_S or now - last < 1.0 or self.speaking
+                    or self.awaiting_answer or self.speaker.buf or self.speaker.chime_buf):
+                continue
+            self.speaker.chime(TICK)
+            last = now
+
+    def _outcome_sound(self, name: str, result: str, refused: bool):
+        """Done / error earcon after a tool. A 'no' from the user is neither."""
+        if refused:
+            return
+        if FAILED.match(result) or (name == "do_task" and not self.last_ok):
+            self.speaker.chime(ERROR)
+        elif name in ACTION_TOOLS or (name in self.bridge.tools and self.bridge.tools[name].risky):
+            self.speaker.chime(DONE)
+
     # ---- speaking and listening ---------------------------------------------------
 
     def say(self, text: str):
         if not text:
             return
+        self.last_said = text
         self.emit({"kind": "agent", "text": text})
         self.speaking = True
         try:
@@ -354,6 +450,9 @@ class Iris:
         self.emit({"kind": "user", "text": text})
         if self.awaiting_answer:
             self.answers.put(text)
+        elif REPEAT.match(text) and self.last_said:
+            # word for word, at once: no brain round trip, no rephrasing
+            threading.Thread(target=self.say, args=(self.last_said,), daemon=True).start()
         elif self.agent and STOP_WORDS.match(text):
             self.agent.cancel.set()
             self.emit({"kind": "stop"})
@@ -380,7 +479,9 @@ class Iris:
             return "stopped"
         if name == "mute_microphone":
             self.set_muted(True, "voice")
-            return "muted; the user unmutes with Control Alt M"
+            return "muted; the user unmutes by holding Control and Alt and pressing M"
+        if name in ("describe_screen", "switch_to", "set_pause"):
+            return self.run_access(name, args)
         if name not in self.bridge.tools:
             return f"unknown tool {name}"
         bt = self.bridge.tools[name]
@@ -420,6 +521,44 @@ class Iris:
                    "ms": round((time.perf_counter() - t) * 1000), "result": result[:300]})
         return result
 
+    def run_access(self, name: str, args: dict) -> str:
+        """Tools that tell the user where they are, or change how Iris listens."""
+        t = time.perf_counter()
+        try:
+            if name == "set_pause":
+                lo, hi = PAUSE_RANGE
+                self.merge_s = round(min(hi, max(lo, float(args.get("seconds", self.merge_s)))), 1)
+                self.prefs["pause_s"] = self.merge_s
+                save_prefs(self.prefs)
+                result = f"I now wait {self.merge_s:g} seconds of silence before I answer."
+            else:
+                name_arg = (args.get("window") or "").strip()
+                window = screen.resolve_window(name_arg, 1) if name_arg else screen.foreground()
+                if window is None:
+                    result = f"ERROR: {name_arg} is not open on the screen."
+                elif name == "switch_to":
+                    ok = screen.bring_to_front(window)
+                    result = f"Now in front: {window.Name}" if ok else f"ERROR: I could not bring {window.Name} to the front."
+                else:
+                    result = look.overview(window, args.get("detail") or "brief", args.get("question") or "",
+                                           emit=self.emit)
+        except Exception as e:
+            result = f"ERROR: {e}"
+        self.emit({"kind": "mcp", "tool": f"screen__{name}", "ok": not result.startswith("ERROR"),
+                   "ms": round((time.perf_counter() - t) * 1000), "result": result[:300]})
+        return result
+
+    def _explain(self, item: dict, agent: Agent):
+        """Teach mode: say the step in plain words before it runs. If the user talked over it,
+        wait for their turn to land: it may be "stop"."""
+        if not item.get("explain"):
+            return
+        self.say(item["explain"])
+        if self.voice.interrupted.is_set():
+            end = time.perf_counter() + self.merge_s + 1.5
+            while time.perf_counter() < end and not agent.cancel.is_set():
+                time.sleep(0.05)
+
     def run_task(self, args: dict) -> str:
         window = screen.resolve_window(args.get("window", "")) if args.get("window") else None
         if args.get("window") and window is None:
@@ -430,6 +569,11 @@ class Iris:
         agent = self.agent = Agent(say=lambda s: self.say_async(s) if s != "Looking at the screen." else None,
                                    confirm=lambda q: "no" if self.muted else self.ask_user(q))
         agent.on_event = self.emit
+        if args.get("teach"):
+            # "show me how": say each step before doing it, and let the cursor rest on the target
+            agent.glide_s = 1.6
+            # only the brain's plain "explain" is spoken; a raw step ("click the Reply button") never is
+            agent.before_step = lambda item: self._explain(item, agent)
         t = time.perf_counter()
         try:
             res = agent.run_plan(args.get("goal", ""), args.get("steps", []), window)
@@ -439,6 +583,7 @@ class Iris:
             summary, ok = f"Something went wrong: {e}", False
         finally:
             self.agent = None
+        self.last_ok = ok
         self.emit({"kind": "task_done", "ok": ok, "summary": summary, "seconds": round(time.perf_counter() - t, 1)})
         return summary
 
@@ -447,30 +592,43 @@ class Iris:
     def converse(self):
         while True:
             text = self.turns.get()
-            message = f"USER: {text}"
-            refused = False
-            for _ in range(8):                # a few tool rounds per user turn
-                try:
-                    out, ms = self.brain.ask(message)
-                except Exception as e:
-                    self.emit({"kind": "error", "message": f"brain: {e}"})
-                    self.say("Sorry, I lost my train of thought. Could you say that again?")
-                    break
-                self.emit({"kind": "brain", "ms": round(ms), "out": out})
-                tool = None if refused else out.get("tool")   # after a "no", no more actions this turn
-                if tool and out.get("say"):
-                    threading.Thread(target=self.say, args=(out["say"],), daemon=True).start()
-                else:
-                    self.say(out.get("say", ""))
-                if not tool:
-                    break
-                args = tool.get("args") or {k: v for k, v in tool.items() if k != "name"}
-                result = self.run_tool(tool.get("name", ""), args)
-                refused = bool(USER_SAID_NO.search(result))
-                message = f"TOOL RESULT {tool.get('name')}: {result}"
-                if refused:
-                    message += (" The user said no. Do not try again or find another way. "
-                                "Reply with tool null and briefly confirm nothing was done.")
+            self.busy_since = time.perf_counter()
+            try:
+                self._turn(text)
+            finally:
+                self.busy_since = None
+
+    def _turn(self, text: str):
+        message = f"USER: {text}"
+        refused = False
+        acted = False
+        for _ in range(8):                # a few tool rounds per user turn
+            try:
+                out, ms = self.brain.ask(message)
+            except Exception as e:
+                self.emit({"kind": "error", "message": f"brain: {e}"})
+                self.speaker.chime(ERROR)
+                # after a tool ran, "say that again" could repeat an action (a second send)
+                self.say("Sorry, I lost my train of thought. " + ("Tell me what you'd like next." if acted
+                                                                  else "Could you say that again?"))
+                break
+            self.emit({"kind": "brain", "ms": round(ms), "out": out})
+            tool = None if refused else out.get("tool")   # after a "no", no more actions this turn
+            if tool and out.get("say") and not (tool.get("args") or {}).get("teach"):
+                threading.Thread(target=self.say, args=(out["say"],), daemon=True).start()
+            else:
+                self.say(out.get("say", ""))
+            if not tool:
+                break
+            args = tool.get("args") or {k: v for k, v in tool.items() if k != "name"}
+            result = self.run_tool(tool.get("name", ""), args)
+            acted = True
+            refused = bool(USER_SAID_NO.search(result))
+            self._outcome_sound(tool.get("name", ""), result, refused)
+            message = f"TOOL RESULT {tool.get('name')}: {result}"
+            if refused:
+                message += (" The user said no. Do not try again or find another way. "
+                            "Reply with tool null and briefly confirm nothing was done.")
 
     # ---- ears: AssemblyAI streaming STT ------------------------------------------------
 
@@ -516,7 +674,7 @@ class Iris:
                         elif ev.get("type") == "Turn" and ev.get("end_of_turn") and ev.get("turn_is_formatted"):
                             if ev.get("transcript", "").strip():
                                 parts.append(ev["transcript"].strip())
-                                deadline = time.perf_counter() + MERGE_S
+                                deadline = time.perf_counter() + self.merge_s
                     if parts and deadline and time.perf_counter() > deadline:
                         self.on_user_turn(" ".join(parts))
                         parts, deadline = [], None

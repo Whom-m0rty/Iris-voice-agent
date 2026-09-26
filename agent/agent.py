@@ -149,6 +149,8 @@ class Agent:
         self._declined: str | None = None     # set when the user said no to a vision action
         self.on_event: Callable[[dict], None] | None = None   # visuals: overlay and panel
         self._typed = ""                      # last text typed in this plan, for the question
+        self.glide_s = GLIDE_S                # cursor glide before each action; longer when teaching
+        self.before_step: Callable[[dict], None] | None = None   # called before each plan step
         self._window = None
 
     # ---- visuals (no effect unless on_event is set) ------------------------------------
@@ -162,7 +164,7 @@ class Agent:
         if not self.on_event:
             return
         self._emit(kind="target", rect=list(rect), via=via, label=label)
-        time.sleep(GLIDE_S)
+        time.sleep(self.glide_s)
 
     def _record(self, steps: list, step: "Step") -> None:
         steps.append(step)
@@ -223,6 +225,10 @@ class Agent:
         for item in plan:
             if self.cancel.is_set():
                 break
+            if self.before_step:
+                self.before_step(item)
+                if self.cancel.is_set():
+                    break
             if item.get("text"):
                 self._typed = item["text"]
             self.goal = goal
@@ -382,6 +388,9 @@ class Agent:
             if self.cancel.is_set():
                 return Result(False, "Stopped because you asked.", steps)
             self._show_target(rect, "kev", f"{short}  {ms:.0f} ms")
+            if self.cancel.is_set():          # "stop" said during the glide (long when teaching)
+                self._emit(kind="target_clear")
+                return Result(False, "Stopped because you asked.", steps)
             self._show_click(rect, "kev")
             if pending_secret:
                 screen.type_secret(el, vault.get(secret))
@@ -457,6 +466,9 @@ class Agent:
             sx, sy = where[1], where[2]
             rect = (sx - 20, sy - 20, sx + 20, sy + 20)
         self._show_target(rect, "vision", f"{short}  {ms / 1000:.1f} s")
+        if self.cancel.is_set():
+            self._emit(kind="target_clear")
+            return None
         self._show_click(rect, "vision")
         try:
             if where[0] == "control":

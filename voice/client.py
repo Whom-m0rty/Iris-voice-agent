@@ -127,14 +127,15 @@ def describe_mcp_action(tool: str, args: dict) -> str:
         return f'Send an email to {args.get("to", "?")} saying "{args.get("text", "")}"?'
     shown = ", ".join(f"{k}: {v}" for k, v in args.items())
     return f"Run {tool.replace('_', ' ')} ({shown})?"
-def _chime(freqs: tuple[int, ...], note_ms: int = 110) -> bytes:
+def _chime(freqs: tuple[int, ...], note_ms: int = 110, volume: int = 9000) -> bytes:
     """Short tones, one after another, PCM16 at RATE. Falling = muted, rising = listening."""
     out = array.array("h")
     n = RATE * note_ms // 1000
+    fade = min(240, n // 3)                                # 10 ms fade in/out, no clicks
     for f in freqs:
         for i in range(n):
-            env = min(1.0, i / 240, (n - i) / 240)        # 10 ms fade in/out, no clicks
-            out.append(int(9000 * env * math.sin(2 * math.pi * f * i / RATE)))
+            env = min(1.0, i / fade, (n - i) / fade)
+            out.append(int(volume * env * math.sin(2 * math.pi * f * i / RATE)))
     return out.tobytes()
 
 

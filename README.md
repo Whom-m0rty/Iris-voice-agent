@@ -45,6 +45,12 @@ Around both:
   servers' own `readOnlyHint` / `destructiveHint` feed the safety gate.
 - **Passwords never reach a model**: stored logins live in Windows Credential Manager and are
   typed by code into fields UI Automation marks as password fields.
+- **Made for people who cannot see the screen**: a soft tick while Iris thinks, a chime when
+  an action is done, a low tone on an error. Ask "what's on my screen?", "what can I do here?",
+  "what's in the photo?" or "I'm lost" (pop-ups are named first, never closed without asking).
+  "Show me how" does a task slowly and explains each step; "say that again" repeats the last
+  reply word for word; "wait longer for me" changes how long a pause may be, and it is
+  remembered. Iris speaks without computer words: "I opened your email", not "focused the tab".
 - **Mute**: Ctrl+Alt+M from any app, the button on `voice/panel.html`, or "stop listening".
   A chime and a spoken line say which state you are in. Muted, the mic sends silence, so a
   pending yes/no can only end as a no. Unmuting needs the key or the button.
