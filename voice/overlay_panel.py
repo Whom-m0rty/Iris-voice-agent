@@ -7,6 +7,7 @@ from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QConicalGradient, QFont, QFontMetrics, QPainter, QPen
 
 WIDTH = 430
+TASKBAR = 48                                   # keep the numbers above the Windows taskbar
 BG = QColor(15, 16, 20, 232)
 CARD = QColor(26, 27, 33, 240)
 LINE = QColor(44, 46, 58)
@@ -88,19 +89,16 @@ class PanelModel:
             self.status, self.status_kind = "listening", "live"
         elif k == "stop":
             self.status, self.status_kind = "stopping", "wait"
-        self.chat = self.chat[-6:]
+        self.chat = self.chat[-30:]                  # the card shows as many as fit
         self.steps = self.steps[-7:]
 
 
-def _wrap(p: QPainter, rect: QRectF, text: str, font: QFont, color: QColor, max_lines: int) -> float:
-    """Draw wrapped text limited to max_lines; returns the height used."""
-    p.setFont(font)
-    p.setPen(color)
+def _lines(text: str, font: QFont, width: float, max_lines: int) -> list[str]:
     fm = QFontMetrics(font)
     words, lines, cur = text.split(), [], ""
     for w in words:
         trial = f"{cur} {w}".strip()
-        if fm.horizontalAdvance(trial) <= rect.width():
+        if fm.horizontalAdvance(trial) <= width:
             cur = trial
         else:
             lines.append(cur)
@@ -109,7 +107,16 @@ def _wrap(p: QPainter, rect: QRectF, text: str, font: QFont, color: QColor, max_
         lines.append(cur)
     if len(lines) > max_lines:
         lines = lines[:max_lines]
-        lines[-1] = fm.elidedText(lines[-1] + " …", Qt.ElideRight, int(rect.width()))
+        lines[-1] = fm.elidedText(lines[-1] + " …", Qt.ElideRight, int(width))
+    return lines
+
+
+def _wrap(p: QPainter, rect: QRectF, text: str, font: QFont, color: QColor, max_lines: int) -> float:
+    """Draw wrapped text limited to max_lines; returns the height used."""
+    p.setFont(font)
+    p.setPen(color)
+    fm = QFontMetrics(font)
+    lines = _lines(text, font, rect.width(), max_lines)
     y = rect.top()
     for ln in lines:
         p.drawText(QRectF(rect.left(), y, rect.width(), fm.height()), Qt.AlignLeft | Qt.AlignVCenter, ln)
@@ -193,21 +200,35 @@ def draw(p: QPainter, m: PanelModel, screen_w: float, screen_h: float, phase: fl
               BADGE["kev"] if m.result_ok else BADGE["confirm"], 2)
     y += h + 12
 
-    # conversation, newest last
-    h = 36 + 6 * 44
-    card(y, h)
-    _wrap(p, QRectF(x + 6, y + 10, w, 18), "CONVERSATION", f_small, MUTED, 1)
-    yy = y + 32
-    for who, text in m.chat:
-        _wrap(p, QRectF(x + 6, yy, w, 14), who, f_small, BADGE["kev"] if who == "Iris" else MUTED, 1)
-        yy += 14 + _wrap(p, QRectF(x + 6, yy + 14, w - 12, 30), text, f_body, TEXT, 2) + 2
-    y += h + 12
+    # numbers are pinned to the bottom (above the taskbar); the conversation fills the rest
+    stats_h = 130
+    stats_y = screen_h - TASKBAR - stats_h - 10
+    chat_top, chat_bottom = y, stats_y - 12
+    if chat_bottom - chat_top > 80:
+        card(chat_top, chat_bottom - chat_top)
+        _wrap(p, QRectF(x + 6, chat_top + 10, w, 18), "CONVERSATION", f_small, MUTED, 1)
+        # newest message at the bottom, older ones above it until the card is full
+        line_h = QFontMetrics(f_body).height()
+        yy = chat_bottom - 10
+        area_top = chat_top + 32
+        for who, text in reversed(m.chat):
+            lines = _lines(text, f_body, w - 12, 4)
+            block = 14 + len(lines) * line_h + 6
+            if yy - block < area_top:
+                break
+            yy -= block
+            _wrap(p, QRectF(x + 6, yy, w, 14), who, f_small, BADGE["kev"] if who == "Iris" else MUTED, 1)
+            p.setFont(f_body)
+            p.setPen(TEXT)
+            for i, ln in enumerate(lines):
+                p.drawText(QRectF(x + 6, yy + 14 + i * line_h, w - 12, line_h), Qt.AlignLeft | Qt.AlignVCenter, ln)
+    y = stats_y
 
     # numbers
     avg = f"{sum(m.kev_ms) // len(m.kev_ms)} ms" if m.kev_ms else "–"
     cells = [(str(m.n["kev"]), "steps by Kev"), (str(m.n["vision"]), "by Claude vision"), (avg, "avg Kev"),
              (str(m.n["mcp"]), "API calls"), (str(m.n["ask"]), "confirmations"), (str(m.n["no"]), "cancelled")]
-    card(y, 130)
+    card(y, stats_h)
     cw = (WIDTH - 20) / 3
     for i, (big, small) in enumerate(cells):
         cx, cy = x0 + 10 + (i % 3) * cw, y + 10 + (i // 3) * 58
