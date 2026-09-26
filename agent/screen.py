@@ -57,6 +57,57 @@ def foreground() -> auto.WindowControl:
 IGNORED_WINDOWS = re.compile(r"^(Program Manager|Iris — observer|.*overlay.*|MSCTFIME UI|Default IME)$", re.I)
 
 
+# ---- do-not-touch list -------------------------------------------------------------
+# voice-hack/protected_apps.txt: one entry per line, matched (case-insensitive) against the
+# program's full path, e.g. "AppData\Roaming\Telegram Desktop\Telegram.exe" for the user's
+# own Telegram while a test account runs from a portable copy. Such windows are never listed,
+# never resolved and never read or clicked.
+PROTECTED_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "protected_apps.txt")
+
+
+class Protected(RuntimeError):
+    """The window belongs to an app on the do-not-touch list."""
+
+
+def _protected_entries() -> list[str]:
+    try:
+        with open(PROTECTED_FILE, encoding="utf-8") as f:
+            return [ln.strip().lower() for ln in f if ln.strip() and not ln.lstrip().startswith("#")]
+    except OSError:
+        return []
+
+
+def process_path(pid: int) -> str:
+    import ctypes
+    from ctypes import wintypes
+    h = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)      # PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return ""
+    try:
+        buf = ctypes.create_unicode_buffer(1024)
+        size = wintypes.DWORD(1024)
+        ok = ctypes.windll.kernel32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size))
+        return buf.value if ok else ""
+    finally:
+        ctypes.windll.kernel32.CloseHandle(h)
+
+
+def is_protected(window) -> bool:
+    entries = _protected_entries()
+    if not entries or window is None:
+        return False
+    try:
+        path = process_path(window.ProcessId).lower()
+    except Exception:
+        return False
+    return any(e in path for e in entries)
+
+
+def guard(window) -> None:
+    if is_protected(window):
+        raise Protected(f"'{window.Name}' is on the do-not-touch list (protected_apps.txt)")
+
+
 def app_windows() -> list:
     """Visible top-level windows a person works in: not notifications, tooltips or toolbars
     (Telegram's pop-up notification is a 320x80 window titled 'TelegramDesktop')."""
@@ -66,7 +117,8 @@ def app_windows() -> list:
             name = (w.Name or "").strip()
             r = w.BoundingRectangle
             if (not name or w.IsOffscreen or IGNORED_WINDOWS.match(name)
-                    or r.width() < 400 or r.height() < 250 or "Tool" in (w.ClassName or "")):
+                    or r.width() < 400 or r.height() < 250 or "Tool" in (w.ClassName or "")
+                    or is_protected(w)):
                 continue
             out.append(w)
         except Exception:
@@ -108,18 +160,8 @@ def resolve_window(name: str, timeout: float = 2) -> auto.WindowControl | None:
 
 def _process_name(pid: int) -> str:
     """Executable name without .exe, lower case ("telegram", "chrome")."""
-    import ctypes
-    from ctypes import wintypes
-    h = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)      # PROCESS_QUERY_LIMITED_INFORMATION
-    if not h:
-        return ""
-    try:
-        buf = ctypes.create_unicode_buffer(512)
-        size = wintypes.DWORD(512)
-        ok = ctypes.windll.kernel32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size))
-        return os.path.splitext(os.path.basename(buf.value))[0].lower() if ok else ""
-    finally:
-        ctypes.windll.kernel32.CloseHandle(h)
+    path = process_path(pid)
+    return os.path.splitext(os.path.basename(path))[0].lower() if path else ""
 
 
 def find_window(title_re: str, timeout: float = 5) -> auto.WindowControl | None:
@@ -159,6 +201,8 @@ def snapshot(window: auto.Control, max_depth: int = 25, tries: int = 4) -> Snaps
     for attempt in range(tries):
         try:
             return _snapshot(window, max_depth)
+        except Protected:
+            raise
         except Exception:
             if attempt == tries - 1:
                 raise
@@ -169,6 +213,7 @@ OFFSCREEN_LIMIT = 80                            # labelled off-screen controls o
 
 
 def _snapshot(window: auto.Control, max_depth: int = 25) -> Snapshot:
+    guard(window)
     elements, texts, unlabeled = {}, [], 0
     root = page_root(window)
     web = root is not window
@@ -390,6 +435,7 @@ MAX_PIXELS = 1_150_000
 def capture(window: auto.Control, max_w: int = 1568) -> tuple[str, tuple[int, int, float]]:
     """PNG of the window as base64, plus (left, top, scale) to map image coords back to screen.
     Refuses when the window is not in front: the grab would show someone else's pixels."""
+    guard(window)
     if not bring_to_front(window):
         raise NotOnTop(window.Name)
     r = window.BoundingRectangle

@@ -1,0 +1,7 @@
+# Apps Iris must never read or touch. One entry per line: part of the program path.
+# Copy to protected_apps.txt (not committed) and edit.
+# Example: your own Telegram, while a test account runs from a portable copy:
+# AppData\Roaming\Telegram Desktop\Telegram.exe
+# Examples: a password manager, your banking app
+# KeePassXC.exe
+# 1Password.exe
