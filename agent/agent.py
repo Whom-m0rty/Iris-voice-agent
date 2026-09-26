@@ -193,6 +193,7 @@ class Agent:
         self._window_title = window.Name
         steps: list[Step] = []
         typed = False
+        scrolls = 0
         last_state = None
         if text is not None and PASSWORD_WORDS.search(goal):
             # a password must come from the vault, never as text a model produced or heard
@@ -218,7 +219,7 @@ class Agent:
             # a secret only ever goes into a password field, model text never does
             criteria = {k: e.label for k, e in snap.elements.items()
                         if (pending_secret and e.password)
-                        or (pending_text and e.ctrl.ControlTypeName in screen.TYPEABLE and not e.password)
+                        or (pending_text and e.typeable and not e.password)
                         or not (pending_secret or pending_text)}
             criteria["BLOCKED"] = "None of these elements can do the next step"
             questions = {"target": {"type": "choice", "instructions": "Which element should be used next?",
@@ -236,7 +237,7 @@ class Agent:
 
             key = answers["target"]["choice"]
             conf = answers["target"].get("probabilities", {}).get(key, 0.0)
-            if pending_text and len(criteria) == 1 and not steps:
+            if pending_text and len(criteria) == 1 and not steps and not screen.is_browser(window):
                 # no text field at all (a calculator): type on the keyboard into the window
                 if not screen.bring_to_front(window):
                     return Result(False, "I could not bring the window to the front to type.", steps)
@@ -267,6 +268,12 @@ class Agent:
                     return Result(False, "I could not find a way to do that on this screen.", steps)
                 if step.action == "done":
                     return Result(True, f"Done: {goal}.", steps)
+                if step.action == "scrolled":
+                    self._emit(kind="progress", text=f"scrolled {step.target}")
+                    scrolls += 1
+                    if scrolls > 3:
+                        return Result(False, "I scrolled but could not find it on this page.", steps)
+                    continue                  # not the step's action: look at the page again
                 if step.action in ("typed into", "entered stored password into"):
                     typed = True
                 self._record(steps, step)
@@ -332,6 +339,12 @@ class Agent:
             return None
         if a == "done":
             return Step("vision", "done", "", ms, why)
+        if a == "scroll":
+            left, top, scale = origin
+            screen.scroll(window, int(left + act.get("x", 200) / scale), int(top + act.get("y", 200) / scale),
+                          act.get("direction", "down"))
+            time.sleep(0.6)
+            return Step("vision", "scrolled", act.get("direction", "down"), ms, why)
         target = act.get("target", "an element")
         if secret:
             description = f"enter the stored '{secret}' password into {target}"

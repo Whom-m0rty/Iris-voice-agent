@@ -26,6 +26,11 @@ class Element:
     password: bool = False
 
     @property
+    def typeable(self) -> bool:
+        """From the snapshot, not the live control: web pages replace elements under us."""
+        return f"{self.kind}Control" in TYPEABLE
+
+    @property
     def label(self) -> str:
         kind = "PasswordField" if self.password else self.kind
         return f"{kind} '{self.name}'" if self.name else f"{kind} (no label)"
@@ -121,16 +126,32 @@ def page_root(window: auto.Control) -> auto.Control:
     return best or window
 
 
-def snapshot(window: auto.Control, max_depth: int = 25) -> Snapshot:
+def snapshot(window: auto.Control, max_depth: int = 25, tries: int = 4) -> Snapshot:
+    """A page that is navigating drops its tree mid-walk; take the snapshot again."""
+    import time
+    for attempt in range(tries):
+        try:
+            return _snapshot(window, max_depth)
+        except Exception:
+            if attempt == tries - 1:
+                raise
+            time.sleep(0.3)
+
+
+def _snapshot(window: auto.Control, max_depth: int = 25) -> Snapshot:
     elements, texts, unlabeled = {}, [], 0
     for ctrl, _ in auto.WalkControl(page_root(window), maxDepth=max_depth):
-        kind = ctrl.ControlTypeName
+        try:
+            kind = ctrl.ControlTypeName
+            ctrl.Name, ctrl.IsEnabled, ctrl.IsOffscreen    # touch now: a live page may drop it
+        except Exception:
+            continue
         if kind in READABLE:
             name = (ctrl.Name or "").strip()
             if len(name) > 1 and name not in texts:
                 texts.append(name)
             continue
-        if kind not in ACTIONABLE or not ctrl.IsEnabled or ctrl.IsOffscreen:
+        if kind not in ACTIONABLE or not ctrl.IsEnabled or (ctrl.IsOffscreen and kind not in TYPEABLE):
             continue
         name = (ctrl.Name or "").strip()
         if not name:
@@ -153,8 +174,11 @@ def wait_for_change(window, before: str, timeout: float = 0.6, every: float = 0.
     end = time.perf_counter() + timeout
     while time.perf_counter() < end:
         time.sleep(every)
-        if snapshot(window).state() != before:
-            return True
+        try:
+            if _snapshot(window).state() != before:
+                return True
+        except Exception:
+            return True                       # the page is being replaced: that is a change
     return False
 
 
@@ -197,6 +221,26 @@ def _text_of(ctrl) -> str:
     return ""
 
 
+def scroll_into_view(el: Element) -> None:
+    try:
+        p = el.ctrl.GetScrollItemPattern()
+        if p:
+            p.ScrollIntoView(waitTime=0)
+    except Exception:
+        pass
+
+
+def is_browser(window) -> bool:
+    return window.ClassName in BROWSER_CLASSES
+
+
+def scroll(window, x: int, y: int, direction: str) -> None:
+    """Mouse wheel over a point of the window (vision fallback asked to scroll)."""
+    auto.MoveTo(x, y, waitTime=0)
+    wheel = auto.WheelUp if direction == "up" else auto.WheelDown
+    wheel(wheelTimes=5, waitTime=0)
+
+
 def click(el: Element) -> None:
     # waitTime=0: uiautomation otherwise sleeps 0.5 s after every pattern call;
     # wait_for_change() does the waiting instead, and only as long as needed
@@ -231,6 +275,7 @@ def type_keys(text: str) -> None:
 def type_text(el: Element, text: str) -> None:
     """Set the field's value; if the app did not take it (Qt apps such as Telegram report
     success but show nothing), click the field and type the characters instead."""
+    scroll_into_view(el)
     try:
         vp = el.ctrl.GetValuePattern()
     except Exception:

@@ -146,7 +146,7 @@ def pick(window, step, carries=None):
     legal = {k: e for k, e in snap.elements.items()
              if carries is None
              or (carries == "secret" and e.password)
-             or (carries == "text" and e.ctrl.ControlTypeName in screen.TYPEABLE and not e.password)}
+             or (carries == "text" and e.typeable and not e.password)}
     if carries and len(legal) == 1:           # a single legal field: the agent takes it without asking
         return next(iter(legal.values())), 1.0, 0.0, 1
     crit = {k: e.label for k, e in legal.items()}
