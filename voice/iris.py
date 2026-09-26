@@ -47,6 +47,8 @@ CHUNK_MS = 100                                  # AssemblyAI wants 50-1000 ms pe
 MERGE_S = float(os.environ.get("MERGE_PAUSE_S", "1.3"))   # a pause shorter than this continues the turn
 BRAIN_MODEL = os.environ.get("BRAIN_MODEL", "haiku")
 TTS_VOICE = os.environ.get("TTS_VOICE", "en-US-AvaMultilingualNeural")
+# tool results that mean the user refused; the turn ends there, whatever the brain wants next
+USER_SAID_NO = re.compile(r"Cancelled: I did not|did not confirm|NOT done|Stopped because you asked", re.I)
 STOP_WORDS = re.compile(r"^\W*(stop|cancel|wait|hold on|never mind)\b", re.I)
 
 BRAIN_PROMPT = """You are the brain of Iris, a calm voice assistant that operates a Windows PC for a person who
@@ -73,6 +75,7 @@ Rules:
 - When asked whether someone wrote, find the message and read it out right away: who, and what it says.
 - When the user dictates a message, use all of their words.
 - Risky actions (sending, paying, deleting) are confirmed with the user by the app itself; just call the tool.
+- If the user said no, that is final: never retry the same thing another way. Confirm nothing was done.
 - Results come from the screen: read numbers and outcomes from "Screen now shows" in the
   TOOL RESULT. Never compute, remember or guess them yourself.
 - Never claim something happened unless a TOOL RESULT says so. If it says NOT sent or
@@ -353,6 +356,7 @@ class Iris:
         while True:
             text = self.turns.get()
             message = f"USER: {text}"
+            refused = False
             for _ in range(8):                # a few tool rounds per user turn
                 try:
                     out, ms = self.brain.ask(message)
@@ -361,7 +365,7 @@ class Iris:
                     self.say("Sorry, I lost my train of thought. Could you say that again?")
                     break
                 self.emit({"kind": "brain", "ms": round(ms), "out": out})
-                tool = out.get("tool")
+                tool = None if refused else out.get("tool")   # after a "no", no more actions this turn
                 if tool and out.get("say"):
                     threading.Thread(target=self.say, args=(out["say"],), daemon=True).start()
                 else:
@@ -369,7 +373,11 @@ class Iris:
                 if not tool:
                     break
                 result = self.run_tool(tool.get("name", ""), tool.get("args") or {})
+                refused = bool(USER_SAID_NO.search(result))
                 message = f"TOOL RESULT {tool.get('name')}: {result}"
+                if refused:
+                    message += (" The user said no. Do not try again or find another way. "
+                                "Reply with tool null and briefly confirm nothing was done.")
 
     # ---- ears: AssemblyAI streaming STT ------------------------------------------------
 

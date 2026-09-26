@@ -311,16 +311,26 @@ def bring_to_front(window: auto.Control, timeout: float = 1.5) -> bool:
     user32 = ctypes.windll.user32
     hwnd = window.NativeWindowHandle
     end = time.perf_counter() + timeout
+    if _top_level(user32.GetForegroundWindow()) == _top_level(hwnd):
+        return True
+    tries = 0
     while time.perf_counter() < end:
         if user32.IsIconic(hwnd):
             user32.ShowWindow(hwnd, 9)                          # SW_RESTORE
-        user32.keybd_event(0x12, 0, 0, 0)                       # Alt down/up unlocks foreground
-        user32.keybd_event(0x12, 0, 2, 0)
+        if tries:
+            # only when the polite way failed: an Alt tap lets us take the foreground, but it
+            # also highlights the menu of apps like Chrome
+            user32.keybd_event(0x12, 0, 0, 0)
+            user32.keybd_event(0x12, 0, 2, 0)
+            time.sleep(0.05)
+            user32.keybd_event(0x1B, 0, 0, 0)                   # Esc: drop that menu highlight
+            user32.keybd_event(0x1B, 0, 2, 0)
         user32.SetForegroundWindow(hwnd)
         window.SetActive()
         time.sleep(0.15)
         if _top_level(user32.GetForegroundWindow()) == _top_level(hwnd):
             return True
+        tries += 1
     return False
 
 

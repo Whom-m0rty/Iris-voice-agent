@@ -32,12 +32,13 @@ DEBUG = bool(os.environ.get("AGENT_DEBUG"))
 # words that always need a spoken "yes", no model involved: acts that reach other people,
 # money, accounts or saved data
 ALWAYS_CONFIRM = re.compile(
-    r"\b(send|pay|buy|purchase|order\b|checkout|delete|remove|erase|format\b|submit|confirm|transfer|"
+    r"\b(send|pay\b|buy|purchase|order\b|checkout|delete|remove|erase|format\b|submit|confirm|transfer|"
     r"post\b|publish|share|call\b|accept|invite|block|report|leave|unsubscribe|book\b|reset|"
     r"discard|don'?t save|uninstall|sign out|log ?out|"
     r"отправ|оплат|купи|заказ|удал|стер|форматир|подтверд|перев[её]д|опубликов|поделит|позвон|"
     r"приня|заблок|не сохран|выйти)", re.I)
 
+MONEY_INTENT = re.compile(r"\b(checkout|check out|buy|pay\b|place (your )?order|purchase)", re.I)
 SEND_INTENT = re.compile(r"\b(send|post|submit|reply|отправ)", re.I)
 
 PASSWORD_WORDS = re.compile(r"pass(word|code|phrase)|\bpin\b|парол|пин-?код", re.I)
@@ -49,10 +50,18 @@ RISK_Q2 = ("Does this action send or share something with someone, spend money, 
            "scrolling or typing into a field is not.)")
 
 
+# reversible shopping and navigation steps that the model scores as borderline
+KNOWN_SAFE = re.compile(
+    r"\b(add(ed)? to (the )?(cart|basket|bag|trolley)|go to (the )?(cart|basket)|view (the )?(cart|basket)|"
+    r"see (the )?(cart|basket)|open (the )?(cart|basket))\b", re.I)
+
+
 def risk_check(description: str) -> tuple[bool, str]:
-    """(needs a spoken yes?, why). Word list first, then Kev with two phrasings in one request."""
+    """(needs a spoken yes?, why). Word lists first, then Kev with two phrasings in one request."""
     if ALWAYS_CONFIRM.search(description):
         return True, "word list"
+    if KNOWN_SAFE.search(description):
+        return False, "known safe"
     a, _ = systemone.ask(f"Action about to happen on the user's computer: {description}.",
                          {"q1": {"type": "noul", "instructions": RISK_Q},
                           "q2": {"type": "noul", "instructions": RISK_Q2}})
@@ -100,6 +109,7 @@ class Agent:
         self._declined: str | None = None     # set when the user said no to a vision action
         self.on_event: Callable[[dict], None] | None = None   # visuals: overlay and panel
         self._typed = ""                      # last text typed in this plan, for the question
+        self._window = None
 
     # ---- visuals (no effect unless on_event is set) ------------------------------------
 
@@ -131,6 +141,16 @@ class Agent:
                            self._window_title or "").strip()
             to = f" to {where}" if where and not re.search(r"telegram|chrome|edge|mail", where, re.I) else ""
             return f'Send "{self._typed}"{to}?'
+        if MONEY_INTENT.search(f"{self.goal} {description}") and self._window is not None:
+            # say what it costs: "how much?" is the first thing people ask
+            try:
+                shown = " ".join(screen.snapshot(self._window).texts)
+            except Exception:
+                shown = ""
+            total = re.search(r"(?:subtotal|total)[^€$£\d]{0,40}([€$£]\s?\d[\d.,]*|\d[\d.,]*\s?[€$£])", shown, re.I)
+            price = total or re.search(r"([€$£]\s?\d[\d.,]*|\d[\d.,]*\s?[€$£])", shown)
+            cost = f" It costs {price.group(1).strip()}." if price else ""
+            return f"Check out and pay for your basket?{cost} Say yes to go ahead."
         return f"About to {description}. Go ahead?"
 
     def _approved(self, description: str) -> bool:
@@ -155,6 +175,7 @@ class Agent:
         """Execute a plan the voice LLM already made: [{"do": "press the One button"},
         {"do": "type the reply", "text": "..."}]. Kev does one action per item, no planning."""
         window = window or screen.foreground()
+        self._window = window
         screen.bring_to_front(window)         # the user's app in front; the overlay shows real positions
         steps: list[Step] = []
         self._typed = ""
@@ -217,9 +238,12 @@ class Agent:
                 state += " The agent has to fill in a password, so it needs a password field."
             # code narrows the legal actions, the model only picks among them:
             # a secret only ever goes into a password field, model text never does
+            fields = {k for k, e in snap.elements.items() if e.typeable and not e.password}
+            plain = {k for k in fields if snap.elements[k].kind in ("Edit", "Document")}
+            fields = plain or fields          # text goes into text boxes before drop-downs
             criteria = {k: e.label for k, e in snap.elements.items()
                         if (pending_secret and e.password)
-                        or (pending_text and e.typeable and not e.password)
+                        or (pending_text and k in fields)
                         or not (pending_secret or pending_text)}
             criteria["BLOCKED"] = "None of these elements can do the next step"
             questions = {"target": {"type": "choice", "instructions": "Which element should be used next?",

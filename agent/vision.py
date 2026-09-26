@@ -24,7 +24,7 @@ Reply with ONE JSON object and nothing else:
  "direction": "up" | "down",    // for scroll only: when the control you need is not visible
  "text": str,                   // for type only
  "target": str,                 // short name of what you click, e.g. "the blue Install button"
- "say": str}                    // one short sentence to speak to the user, in the user's language
+ "say": str}                    // one short sentence to speak to the user, in English
 Pick the single next step toward the goal. "done" if the goal is already reached, "blocked" if impossible."""
 
 
@@ -48,19 +48,23 @@ class ClaudeCLI:
     def __init__(self, max_calls: int = 8):
         self.max_calls = max_calls
         self.proc = None
+        self.spare = None
         self.calls = 0
         self.lock = threading.Lock()
 
-    def _spawn(self):
+    def _new_process(self):
         # a multi-line prompt does not survive cmd.exe quoting, so it goes in a file
         prompt_file = Path(tempfile.gettempdir()) / "voice_agent_vision_prompt.txt"
         prompt_file.write_text(SYSTEM, encoding="utf-8")
         cmd = ["claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json",
                "--verbose", "--tools", "", "--model", MODEL, "--no-session-persistence",
                "--system-prompt-file", str(prompt_file)]
-        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        return subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                      stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
                                      shell=True)
+
+    def _spawn(self):
+        self.proc = self._new_process()
         self.calls = 0
 
     def warm(self):
@@ -73,12 +77,17 @@ class ClaudeCLI:
             if self.proc is None or self.proc.poll() is not None or self.calls >= self.max_calls:
                 if self.proc and self.proc.poll() is None:
                     self.proc.stdin.close()
-                self._spawn()
+                if self.spare and self.spare.poll() is None:   # a fresh process started in advance
+                    self.proc, self.spare, self.calls = self.spare, None, 0
+                else:
+                    self._spawn()
             t = time.perf_counter()
             msg = {"type": "user", "message": {"role": "user", "content": _content(png_b64, goal)}}
             self.proc.stdin.write(json.dumps(msg) + "\n")
             self.proc.stdin.flush()
             self.calls += 1
+            if self.calls == self.max_calls - 1 and self.spare is None:
+                self.spare = self._new_process()      # warm the next one while this one works
             for line in self.proc.stdout:
                 ev = json.loads(line)
                 if ev.get("type") == "result":

@@ -126,8 +126,18 @@ class Overlay(QWidget):
         self.pos = v
         self.update()
 
+    def _keep_panel_on_top(self):
+        """The observer panel is an Edge app window; a maximised app would cover it."""
+        import ctypes
+        user32 = ctypes.windll.user32
+        hwnd = user32.FindWindowW(None, "Iris — observer")
+        if hwnd:
+            user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010)   # TOPMOST, no size/move/activate
+
     def _tick(self):
         self.phase = (self.phase + 2.2) % 360
+        if int(self.phase) % 90 == 0:
+            self._keep_panel_on_top()
         now = time.time()
         self.ripples = [r for r in self.ripples if now - r[1] < 0.7]
         if self.visible_cursor and now - self.last_activity > IDLE_HIDE_S and not self.anim.state():
