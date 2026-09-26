@@ -85,6 +85,20 @@ class Result:
     steps: list[Step] = field(default_factory=list)
 
 
+TYPE_STEP = re.compile(r"^\s*(type|enter|write|input)\s+(in\s+)?(the\s+)?(number|text|word|digits?)?\s*[\"'“]?(?P<text>[^\"'”]+?)[\"'”]?\s*$", re.I)
+
+
+def with_text(item: dict) -> dict:
+    """Planners sometimes write {"do": "type the number 12"} and forget "text": recover it,
+    so the step types 12 instead of clicking whatever looks like "1"."""
+    if item.get("text") or item.get("secret"):
+        return item
+    m = TYPE_STEP.match(item.get("do", ""))
+    if m and not re.search(r"\b(into|in the|box|field)\b", item["do"], re.I):
+        return {**item, "text": m.group("text").strip()}
+    return item
+
+
 def interpret_confirmation(said: str, question: str) -> str:
     # Phrasing measured on 19 answers (26.09): the question has to sit in the state next to
     # the reply. "User said: ..." alone scored 6/19 and read "cancel that" as yes; this 18/19,
@@ -179,6 +193,7 @@ class Agent:
         screen.bring_to_front(window)         # the user's app in front; the overlay shows real positions
         steps: list[Step] = []
         self._typed = ""
+        plan = [with_text(item) for item in plan]
         for item in plan:
             if self.cancel.is_set():
                 break
@@ -202,6 +217,8 @@ class Agent:
             if stuck:
                 return Result(False, f"NOT sent: the text is still in the input box. Steps done: "
                                      f"{'; '.join(f'{s.action} {s.target}' for s in steps)}.", steps)
+        if not steps:
+            return Result(False, "Nothing was done: no step could be carried out.", steps)
         return Result(True, f"Done: {goal}.", steps)
 
     def run(self, goal: str, window=None, text: str | None = None,

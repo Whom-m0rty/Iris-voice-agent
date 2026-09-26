@@ -45,8 +45,19 @@ STT_URL = ("wss://streaming.assemblyai.com/v3/ws?sample_rate=24000&format_turns=
            f"&speech_model={os.environ.get('STT_MODEL', 'universal-3-6-pro')}")
 CHUNK_MS = 100                                  # AssemblyAI wants 50-1000 ms per message
 MERGE_S = float(os.environ.get("MERGE_PAUSE_S", "1.3"))   # a pause shorter than this continues the turn
-BRAIN_MODEL = os.environ.get("BRAIN_MODEL", "haiku")
+# sonnet: measured 26-27.09 - barely slower than haiku here, but haiku misread the screen
+# ("12 x 3 = 36" while it showed 1 x 3 = 3) and made sloppier plans
+BRAIN_MODEL = os.environ.get("BRAIN_MODEL", "sonnet")
 TTS_VOICE = os.environ.get("TTS_VOICE", "en-US-AvaMultilingualNeural")
+MIC_NAME = os.environ.get("MIC_NAME", "K66")        # input device, matched by name
+
+
+def mic_device() -> int | None:
+    """Index of the input device whose name contains MIC_NAME; None = system default."""
+    for i, d in enumerate(sd.query_devices()):
+        if d["max_input_channels"] > 0 and MIC_NAME.lower() in d["name"].lower():
+            return i
+    return None
 # tool results that mean the user refused; the turn ends there, whatever the brain wants next
 USER_SAID_NO = re.compile(r"Cancelled: I did not|did not confirm|NOT done|Stopped because you asked", re.I)
 STOP_WORDS = re.compile(r"^\W*(stop|cancel|wait|hold on|never mind)\b", re.I)
@@ -66,7 +77,8 @@ Tools:
   open windows below. steps = small single actions [{"do": "..."}], for typing add "text", for a
   stored password add "secret": "<login name>" (never put a password in text).
   The app is already open: never add a step to open it. Name the control: "press the digit 7",
-  "click the Reply button", "type the message into the message box". To send, the last
+  "click the Reply button", "type the message into the message box". A typing step always
+  carries "text". To send, the last
   step is "click the Send button" - never press Enter. Keypads: one key per step.
 - stop_task(): stop the running task.
 
@@ -77,7 +89,8 @@ Rules:
 - Risky actions (sending, paying, deleting) are confirmed with the user by the app itself; just call the tool.
 - If the user said no, that is final: never retry the same thing another way. Confirm nothing was done.
 - Results come from the screen: read numbers and outcomes from "Screen now shows" in the
-  TOOL RESULT. Never compute, remember or guess them yourself.
+  TOOL RESULT (the main display, not history lists). Never compute, remember or guess them.
+  If the screen does not show what the user asked for, say so plainly.
 - Never claim something happened unless a TOOL RESULT says so. If it says NOT sent or
   Stopped, tell the user plainly that it did not happen.
 - Stored login names: {SECRETS}
@@ -372,7 +385,8 @@ class Iris:
                     self.say(out.get("say", ""))
                 if not tool:
                     break
-                result = self.run_tool(tool.get("name", ""), tool.get("args") or {})
+                args = tool.get("args") or {k: v for k, v in tool.items() if k != "name"}
+                result = self.run_tool(tool.get("name", ""), args)
                 refused = bool(USER_SAID_NO.search(result))
                 message = f"TOOL RESULT {tool.get('name')}: {result}"
                 if refused:
@@ -397,7 +411,10 @@ class Iris:
 
                 def cb(indata, *_):
                     loop.call_soon_threadsafe(audio_q.put_nowait, bytes(indata))
-                with sd.RawInputStream(samplerate=RATE, channels=1, dtype="int16", blocksize=n, callback=cb):
+                device = mic_device()
+                self.emit({"kind": "mic", "device": sd.query_devices(device, "input")["name"]})
+                with sd.RawInputStream(samplerate=RATE, channels=1, dtype="int16", blocksize=n,
+                                       callback=cb, device=device):
                     while True:
                         await ws.send(await audio_q.get())
 

@@ -21,6 +21,11 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QFont, QGuiApplicat
 from PySide6.QtWidgets import QApplication, QWidget  # noqa: E402
 from websockets.sync.client import connect  # noqa: E402
 
+import overlay_panel  # noqa: E402
+
+SHOW_PANEL = os.environ.get("OVERLAY_PANEL", "1") != "0"
+
+
 URL = "ws://127.0.0.1:8770"
 GLIDE_MS = int(os.environ.get("CURSOR_GLIDE_MS", "450"))
 SCALE = float(os.environ.get("CURSOR_SCALE", "3.4"))
@@ -72,6 +77,7 @@ class Overlay(QWidget):
         self.target_via = "kev"
         self.target_label = ""
         self.hidden_until = 0.0
+        self.panel = overlay_panel.PanelModel()
 
         self.anim = QVariantAnimation(self, duration=GLIDE_MS, easingCurve=QEasingCurve.InOutCubic)
         self.anim.valueChanged.connect(self._moved)
@@ -100,7 +106,9 @@ class Overlay(QWidget):
 
     def on_event(self, ev: dict):
         kind = ev.get("kind")
-        self.last_activity = time.time()
+        self.panel.on_event(ev)
+        if kind in ("target", "cursor", "click", "overlay_hide"):
+            self.last_activity = time.time()
         if kind in ("target", "cursor"):
             self.hidden_until = 0.0
         if kind == "target":
@@ -146,6 +154,8 @@ class Overlay(QWidget):
             self._draw_target(p)
         for center, born, color in self.ripples:
             self._draw_ripple(p, center, time.time() - born, color)
+        if SHOW_PANEL:
+            overlay_panel.draw(p, self.panel, self.width(), self.height(), self.phase)
         if self.visible_cursor:
             self._draw_cursor(p)
 
@@ -212,7 +222,15 @@ class Overlay(QWidget):
 
 
 if __name__ == "__main__":
+    import ctypes
+    import signal
+    # one overlay only: two would draw two cursors
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _mutex = k32.CreateMutexW(None, False, "IrisOverlaySingleton")
+    if ctypes.get_last_error() == 183:                          # ERROR_ALREADY_EXISTS
+        sys.exit(0)
     app = QApplication(sys.argv)
     w = Overlay()
+    signal.signal(signal.SIGINT, lambda *_: app.quit())
     w.show()
     sys.exit(app.exec())

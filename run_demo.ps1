@@ -12,13 +12,11 @@ catch {
     do { Start-Sleep 3; $up = $true; try { Invoke-WebRequest http://127.0.0.1:8009/docs -UseBasicParsing -TimeoutSec 2 | Out-Null } catch { $up = $false } } until ($up)
 }
 
-# 2. Cursor overlay (visual only, clicks pass through)
+# 2. Cursor overlay + observer panel (visual only, clicks pass through; single instance)
 Start-Process $py -ArgumentList "`"$root\voice\overlay.py`"" -WindowStyle Hidden
 
-# 3. Observer panel, docked on the right edge of a 1920x1080 screen
-Start-Process $edge -ArgumentList "--app=file:///$($root -replace '\\','/')/voice/panel.html",
-    "--user-data-dir=$env:TEMP\iris-panel-profile", "--no-first-run",
-    "--window-position=1460,0", "--window-size=460,1040"
+# 3. The observer panel is drawn by the overlay itself (always on top). The web version,
+#    voice/panel.html, still works in any browser if you prefer a separate window.
 
 # 4. Voice session (foreground, so its log stays visible)
 Set-Location "$root\voice"
