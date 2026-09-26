@@ -1,0 +1,15 @@
+# Iris on top of Kev's environment (kev/.venv). Versions as tested, September 2026.
+uiautomation==2.0.29
+comtypes==1.4.17
+pillow==12.3.0
+websockets==17.1
+sounddevice==0.5.6
+miniaudio==1.71
+edge-tts==7.2.8
+mcp==2.2.0
+keyring==25.7.0
+PySide6-Essentials==6.11.2
+google-api-python-client==2.200.0
+google-auth-oauthlib==1.4.1
+# only for BRAIN_BACKEND=api / VISION_BACKEND=api (Anthropic API instead of a Claude Code login)
+anthropic
