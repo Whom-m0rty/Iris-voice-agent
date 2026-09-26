@@ -48,12 +48,17 @@ DEBUG_EVENTS = bool(os.environ.get("VOICE_DEBUG"))
 # stored agent (setup_agent.py) whose LLM is Claude via AssemblyAI's gateway; empty = managed model.
 # Measured 26.09: the managed model returned empty replies to some requests, Claude did not.
 AGENT_ID = os.environ.get("VOICE_AGENT_ID", "")
+MIN_SILENCE_MS = int(os.environ.get("MIN_SILENCE_MS", "900"))
+MAX_SILENCE_MS = int(os.environ.get("MAX_SILENCE_MS", "2400"))
 
 SYSTEM_PROMPT = """You are Iris, a calm voice assistant that operates a Windows PC for a person who
 cannot see the screen or is not comfortable with computers. Speak in short, plain sentences.
 
 Prefer direct tools (names like mail__list_recent) when one fits the request: they are fast
 and reliable. Use do_task only for things no direct tool covers.
+When the user asks whether someone wrote, find that message and read it out right away:
+who it is from and what it says. Do not ask first whether to read it.
+When the user dictates a reply, use their full words, including every part they said.
 
 When the user wants something done on the screen, call do_task with:
 - goal: what the user wants, in one sentence
@@ -100,6 +105,16 @@ TOOLS = [
 ]
 
 
+def describe_mcp_action(tool: str, args: dict) -> str:
+    """A confirmation question a person can answer, not a JSON dump."""
+    if tool == "reply":
+        return f'Send the reply "{args.get("text", "")}"?'
+    if tool == "send_email":
+        return f'Send an email to {args.get("to", "?")} saying "{args.get("text", "")}"?'
+    shown = ", ".join(f"{k}: {v}" for k, v in args.items())
+    return f"Run {tool.replace('_', ' ')} ({shown})?"
+
+
 class Speaker:
     """Plays reply.audio; flush() drops what is queued when the user interrupts."""
 
@@ -141,6 +156,11 @@ class VoiceSession:
         self.stop_flag = threading.Event()
         self.speaker = Speaker()
         self.ready = asyncio.Event()          # no audio before session.ready
+        self._reply_asked_at = 0.0
+        self._last_reply_started = 0.0
+        self._reply_had_content = False
+        self._unanswered_user: str | None = None   # user text the agent has not reacted to yet
+        self.empty_replies = 0
         self.log: list[str] = []              # task log kept in the system prompt
 
     # ---- sending ---------------------------------------------------------------
@@ -154,6 +174,20 @@ class VoiceSession:
             await self._send(msg)
             if msg["type"] == "reply.create":
                 self.idle = False             # a reply is starting; wait for reply.done
+                self._reply_asked_at = time.perf_counter()
+                asyncio.ensure_future(self._unstick())
+
+    async def _unstick(self, after: float = 4.0):
+        """The live API sometimes drops a reply.create (e.g. while it answers the user itself).
+        Without reply.started we would wait for a reply.done that never comes."""
+        asked = self._reply_asked_at
+        await asyncio.sleep(after)
+        if not self.idle and not self._reply_started_since(asked):
+            self.idle = True
+            await self._flush_if_idle()
+
+    def _reply_started_since(self, t: float) -> bool:
+        return self._last_reply_started >= t
 
     def _queue(self, *msgs: dict):
         """Thread-safe: queue messages from the task thread and flush when idle."""
@@ -224,7 +258,7 @@ class VoiceSession:
     def _run_risky_mcp(self, name: str, args: dict):
         """Risky MCP call in the background: ask out loud, act only on a clear yes."""
         bt = self.bridge.tools[name]
-        question = f"{bt.description.split('.')[0]} with {json.dumps(args, ensure_ascii=False)}"
+        question = describe_mcp_action(bt.name, args)
         answer = "unclear"
         for _ in range(3):
             said = self.agent_confirm(question)
@@ -245,7 +279,8 @@ class VoiceSession:
         if name in self.bridge.tools:
             if self.bridge.tools[name].risky:
                 threading.Thread(target=self._run_risky_mcp, args=(name, args), daemon=True).start()
-                return "waiting for the user's spoken confirmation; the result will follow"
+                return ("The app is asking the user to confirm this right now. Say nothing; "
+                        "do not ask yourself. The result will follow.")
             t = time.perf_counter()
             result = self.bridge.call(name, args)
             self.emit({"kind": "mcp", "tool": name, "ok": not result.startswith("ERROR"),
@@ -295,18 +330,33 @@ class VoiceSession:
                 self.speaker.play(base64.b64decode(ev["data"]))
             elif t == "reply.started":
                 self.idle = False
+                self._last_reply_started = time.perf_counter()
+                self._reply_had_content = False
             elif t == "reply.done":
                 if ev.get("status") == "interrupted":
                     self.speaker.flush()
+                elif not self._reply_had_content and self._unanswered_user and not self.awaiting_answer:
+                    # the live API sometimes ends a reply with no words and no tool call;
+                    # ask once more with the user's exact words instead of going silent
+                    self.empty_replies += 1
+                    said, self._unanswered_user = self._unanswered_user, None
+                    self.emit({"kind": "retry", "reason": "empty reply", "user": said})
+                    self.outbox.append({"type": "reply.create",
+                                        "instructions": f'The user said: "{said}". Respond to it now.'})
                 self.idle = True
                 await self._flush_if_idle()
             elif t == "transcript.user":
                 self.emit({"kind": "user", "text": ev["text"]})
+                self._unanswered_user = ev["text"]
                 if self.awaiting_answer:
                     self.answers.put(ev["text"])
             elif t == "transcript.agent":
+                self._reply_had_content = True
+                self._unanswered_user = None
                 self.emit({"kind": "agent", "text": ev["text"], "interrupted": ev.get("interrupted", False)})
             elif t == "tool.call":
+                self._reply_had_content = True
+                self._unanswered_user = None
                 # off the event loop: MCP calls and window lookups can take a moment
                 result = await asyncio.to_thread(self._handle_tool, ev["name"], ev.get("arguments") or {})
                 self.emit({"kind": "tool", "name": ev["name"], "args": ev.get("arguments"), "result": result})
@@ -334,6 +384,8 @@ class VoiceSession:
                 "system_prompt": self._prompt(),
                 "greeting": "Hi, I'm Iris. What would you like to do?",
                 "output": {"voice": VOICE},
+                # older users pause mid-sentence; wait longer before ending their turn
+                "input": {"turn_detection": {"min_silence": MIN_SILENCE_MS, "max_silence": MAX_SILENCE_MS}},
                 "tools": TOOLS + self.bridge.voice_tools()}})
             mic = asyncio.ensure_future(self._mic())
             try:
