@@ -19,7 +19,7 @@ import vault
 import vision
 
 DONE_P = 0.7          # Kev must be this sure the goal is reached
-MIN_PROB = 0.2        # probability of the picked element; below this it goes to vision
+MIN_PROB = 0.15       # probability of the picked element; below this it goes to vision
 # safety gate thresholds (Kev, two questions in one request). Chosen on two labelled sets
 # on 26.09, then frozen and checked once on a third set - see bench/bench_full.py
 RISK_P1 = 0.35
@@ -155,6 +155,7 @@ class Agent:
         """Execute a plan the voice LLM already made: [{"do": "press the One button"},
         {"do": "type the reply", "text": "..."}]. Kev does one action per item, no planning."""
         window = window or screen.foreground()
+        screen.bring_to_front(window)         # the user's app in front; the overlay shows real positions
         steps: list[Step] = []
         self._typed = ""
         for item in plan:
@@ -235,6 +236,15 @@ class Agent:
 
             key = answers["target"]["choice"]
             conf = answers["target"].get("probabilities", {}).get(key, 0.0)
+            if pending_text and len(criteria) == 1 and not steps:
+                # no text field at all (a calculator): type on the keyboard into the window
+                if not screen.bring_to_front(window):
+                    return Result(False, "I could not bring the window to the front to type.", steps)
+                screen.type_keys(text)
+                typed = True
+                self._record(steps, Step("kev", "typed on the keyboard", f"'{text}' into {window.Name}", 0))
+                screen.wait_for_change(window, snap.state())
+                continue
             if (pending_text or pending_secret) and len(criteria) == 2:  # one field + BLOCKED: nothing to decide
                 key, conf = next(iter(criteria)), 1.0
             el = snap.elements.get(key)
@@ -303,7 +313,11 @@ class Agent:
         if self.on_event:                     # our own cursor must not end up in the screenshot
             self._emit(kind="overlay_hide", seconds=1.5)
             time.sleep(0.12)
-        png, origin = screen.capture(window)
+        try:
+            png, origin = screen.capture(window)
+        except screen.NotOnTop:
+            self.say("I cannot see that window, another one is covering it.")
+            return None
         full_goal = goal + (f' (text to type: "{text}")' if text else "")
         if secret:  # the model only learns that a password field must be clicked, not the value
             full_goal += " (click the password field; the app types the password itself)"
@@ -339,7 +353,11 @@ class Agent:
             return None
         self._show_target(rect, "vision", f"{short}  {ms / 1000:.1f} s")
         self._show_click(rect, "vision")
-        screen.click_at(origin, act["x"], act["y"])
+        try:
+            screen.click_at(origin, act["x"], act["y"], window)
+        except screen.NotOnTop:
+            self.say("Something is covering that window, so I did not click.")
+            return None
         time.sleep(0.15)
         action = "clicked"
         if secret:

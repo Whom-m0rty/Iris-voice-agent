@@ -249,11 +249,41 @@ def type_text(el: Element, text: str) -> None:
 
 # ---- pixels, for the vision fallback -----------------------------------------
 
-def capture(window: auto.Control, max_w: int = 1280) -> tuple[str, tuple[int, int, float]]:
-    """PNG of the window as base64, plus (left, top, scale) to map image coords back to screen."""
-    window.SetActive()  # a screen grab shows whatever is on top, so bring the window forward
+class NotOnTop(RuntimeError):
+    """The target window could not be brought to the front, so pixels would show another app."""
+
+
+def _top_level(hwnd: int) -> int:
+    import ctypes
+    return ctypes.windll.user32.GetAncestor(hwnd, 2)          # GA_ROOT
+
+
+def bring_to_front(window: auto.Control, timeout: float = 1.5) -> bool:
+    """Restore and focus the window, and check that it really is the foreground window.
+    Windows refuses SetForegroundWindow to background processes, hence the Alt tap."""
+    import ctypes
     import time
-    time.sleep(0.25)
+    user32 = ctypes.windll.user32
+    hwnd = window.NativeWindowHandle
+    end = time.perf_counter() + timeout
+    while time.perf_counter() < end:
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, 9)                          # SW_RESTORE
+        user32.keybd_event(0x12, 0, 0, 0)                       # Alt down/up unlocks foreground
+        user32.keybd_event(0x12, 0, 2, 0)
+        user32.SetForegroundWindow(hwnd)
+        window.SetActive()
+        time.sleep(0.15)
+        if _top_level(user32.GetForegroundWindow()) == _top_level(hwnd):
+            return True
+    return False
+
+
+def capture(window: auto.Control, max_w: int = 1280) -> tuple[str, tuple[int, int, float]]:
+    """PNG of the window as base64, plus (left, top, scale) to map image coords back to screen.
+    Refuses when the window is not in front: the grab would show someone else's pixels."""
+    if not bring_to_front(window):
+        raise NotOnTop(window.Name)
     r = window.BoundingRectangle
     img = ImageGrab.grab(bbox=(r.left, r.top, r.right, r.bottom), all_screens=True)
     scale = min(1.0, max_w / img.width)
@@ -264,6 +294,15 @@ def capture(window: auto.Control, max_w: int = 1280) -> tuple[str, tuple[int, in
     return base64.b64encode(buf.getvalue()).decode(), (r.left, r.top, scale)
 
 
-def click_at(origin: tuple[int, int, float], x: int, y: int) -> None:
+def click_at(origin: tuple[int, int, float], x: int, y: int, window: auto.Control | None = None) -> None:
+    """Click a point from the screenshot. With `window`, the point must belong to that
+    window - never click into whatever else happens to be on top."""
+    import ctypes
+    from ctypes import wintypes
     left, top, scale = origin
-    auto.Click(int(left + x / scale), int(top + y / scale), waitTime=0)
+    sx, sy = int(left + x / scale), int(top + y / scale)
+    if window is not None:
+        hit = ctypes.windll.user32.WindowFromPoint(wintypes.POINT(sx, sy))
+        if _top_level(hit) != _top_level(window.NativeWindowHandle):
+            raise NotOnTop(f"point ({sx}, {sy}) is covered by another window")
+    auto.Click(sx, sy, waitTime=0)

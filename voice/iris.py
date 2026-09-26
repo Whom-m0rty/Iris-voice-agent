@@ -73,6 +73,8 @@ Rules:
 - When asked whether someone wrote, find the message and read it out right away: who, and what it says.
 - When the user dictates a message, use all of their words.
 - Risky actions (sending, paying, deleting) are confirmed with the user by the app itself; just call the tool.
+- Results come from the screen: read numbers and outcomes from "Screen now shows" in the
+  TOOL RESULT. Never compute, remember or guess them yourself.
 - Never claim something happened unless a TOOL RESULT says so. If it says NOT sent or
   Stopped, tell the user plainly that it did not happen.
 - Stored login names: {SECRETS}
@@ -95,6 +97,7 @@ class Brain:
         self.prompt = prompt
         self.proc = None
         self.turns = 0
+        self.lock = threading.Lock()          # warm-up and the conversation share one process
 
     def _spawn(self):
         with open(self.prompt_file, "w", encoding="utf-8") as f:
@@ -107,7 +110,21 @@ class Brain:
             text=True, encoding="utf-8", shell=True)
         self.turns = 0
 
+    def warm(self):
+        """Start the CLI and send one throwaway turn: the first real answer would otherwise
+        take ~8 s instead of ~2.5 s."""
+        if self.proc is None or self.proc.poll() is not None:
+            self._spawn()
+        try:
+            self.ask('SYSTEM CHECK: reply exactly {"say": "", "tool": null}')
+        except Exception:
+            pass
+
     def ask(self, text: str) -> tuple[dict, float]:
+        with self.lock:
+            return self._ask(text)
+
+    def _ask(self, text: str) -> tuple[dict, float]:
         if self.proc is None or self.proc.poll() is not None or self.turns > 60:
             self._spawn()
         t = time.perf_counter()
@@ -132,6 +149,9 @@ class APIBrain:
         self.model = os.environ.get("BRAIN_API_MODEL", "claude-haiku-4-5-20251001")
         self.prompt = prompt
         self.history: list[dict] = []
+
+    def warm(self):
+        pass
 
     def ask(self, text: str) -> tuple[dict, float]:
         t = time.perf_counter()
@@ -233,6 +253,10 @@ class Iris:
         finally:
             self.speaking = False
 
+    def say_async(self, text: str):
+        if not self.speaking:                 # skip a progress line rather than talk over ourselves
+            threading.Thread(target=self.say, args=(text,), daemon=True).start()
+
     def ask_user(self, question: str) -> str:
         """Speak a yes/no question and wait for the user's next turn (exact words)."""
         self.emit({"kind": "confirm", "question": question})
@@ -307,7 +331,8 @@ class Iris:
             return f"{args['window']} is not open on the screen."
         self.emit({"kind": "task_start", "goal": args.get("goal"), "window": args.get("window"),
                    "steps": args.get("steps")})
-        agent = self.agent = Agent(say=lambda s: self.say(s) if s != "Looking at the screen." else None,
+        # progress lines are spoken in the background: the hands never wait for the voice
+        agent = self.agent = Agent(say=lambda s: self.say_async(s) if s != "Looking at the screen." else None,
                                    confirm=lambda q: self.ask_user(q))
         agent.on_event = self.emit
         t = time.perf_counter()
@@ -403,6 +428,7 @@ class Iris:
                 await asyncio.sleep(1)
 
     def run(self):
+        threading.Thread(target=self.brain.warm, daemon=True).start()
         threading.Thread(target=self.converse, daemon=True).start()
         threading.Thread(target=self.say, args=("Hi, I'm Iris. What would you like to do?",), daemon=True).start()
         asyncio.run(self.listen_forever())

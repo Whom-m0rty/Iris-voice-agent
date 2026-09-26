@@ -29,7 +29,11 @@ def main():
     t0 = time.perf_counter()
     state = {"last_speech": time.perf_counter(), "busy": False}
 
+    import events
+    bus = events.bus()                     # the overlay and the observer panel listen here
+
     def emit(e):
+        bus.publish(e)
         k = e.get("kind")
         if k in ("target", "click", "overlay_hide"):
             return
