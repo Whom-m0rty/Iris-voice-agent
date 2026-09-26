@@ -41,6 +41,8 @@ ALWAYS_CONFIRM = re.compile(
 MONEY_INTENT = re.compile(r"\b(checkout|check out|buy|pay\b|place (your )?order|purchase)", re.I)
 SEND_INTENT = re.compile(r"\b(send|post|submit|reply|отправ)", re.I)
 
+SCROLL_STEP = re.compile(r"^\s*scroll\b(?P<rest>.*)$", re.I)
+
 PASSWORD_WORDS = re.compile(r"pass(word|code|phrase)|\bpin\b|парол|пин-?код", re.I)
 
 RISK_Q = ("Is this action irreversible or does it send, pay, publish or delete something, "
@@ -261,6 +263,17 @@ class Agent:
             # a password must come from the vault, never as text a model produced or heard
             return Result(False, "I never type a password that was said or written out. "
                                  "It has to be a stored login.", [])
+        m = SCROLL_STEP.match(goal)
+        if m and max_actions == 1 and text is None and secret is None:
+            rest = m.group("rest").lower()
+            direction = "up" if re.search(r"\b(up|top|back)\b", rest) else "down"
+            notches = 25 if re.search(r"\b(top|bottom|end)\b", rest) else 3 if "little" in rest else 6
+            screen.bring_to_front(window)
+            screen.scroll_window(window, direction, notches)
+            time.sleep(0.5)
+            step = Step("kev", "scrolled", direction, 0)
+            self._record([], step)
+            return Result(True, f"Scrolled {direction}.", [step])
         if secret and vault.get(secret) is None:
             return Result(False, f"There is no stored login called '{secret}'.", steps)
         for _ in range(MAX_STEPS):

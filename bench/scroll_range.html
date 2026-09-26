@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scroll Range</title>
+<style>
+  body { margin: 0; font: 16px "Segoe UI", sans-serif; background: linear-gradient(#fdfdfd, #e9eef5); }
+  section { height: 700px; padding: 24px 40px; border-bottom: 1px dashed #ccc; }
+  #status { position: fixed; right: 16px; top: 12px; padding: 4px 10px; background: #222; color: #fff;
+            border-radius: 6px; }
+  .gear { width: 22px; height: 22px; border: 1px solid #bbb; border-radius: 4px; background: #fff; padding: 0; }
+</style>
+</head>
+<body>
+<!-- A long page: things the agent needs are below the first screen. #status reports clicks. -->
+<div id="status" role="status">ready</div>
+<section><h1>Account</h1><p>Welcome back. Scroll down for your orders and settings.</p></section>
+<section><h2>Recommendations</h2><p>Nothing here yet.</p></section>
+<section><h2>Settings</h2>
+  <p>Preferences are at the far right of this row:</p>
+  <div style="text-align:right">
+    <button class="gear" onclick="report('gear')"><svg width="16" height="16" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="4" fill="none" stroke="#e67e22" stroke-width="3"/>
+      <g stroke="#e67e22" stroke-width="3"><path d="M12 1v4M12 19v4M1 12h4M19 12h4M4 4l3 3M17 17l3 3M4 20l3-3M17 7l3-3"/></g>
+    </svg></button>
+  </div>
+</section>
+<section><h2>Orders</h2><button onclick="report('orders')">Order history</button></section>
+<script>function report(what) { document.getElementById("status").textContent = "clicked:" + what; }</script>
+</body>
+</html>
