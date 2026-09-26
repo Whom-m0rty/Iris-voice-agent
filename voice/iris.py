@@ -37,6 +37,7 @@ import websockets
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "agent"))
 import env  # noqa: E402,F401  (loads ../.env)
+import browser  # noqa: E402
 import screen  # noqa: E402
 import vault  # noqa: E402
 import vision  # noqa: E402
@@ -88,9 +89,19 @@ Tools:
 - stop_task(): stop the running task.
 - mute_microphone(): stop listening, when the user asks you to. After it you hear nothing until
   they press Control Alt M.
+- browser_search(site, query): open search results on a site in the user's browser. site is one
+  of: google, youtube, amazon.it, amazon.com, wikipedia.
+- browser_open(url): open an address in the user's browser (a product page, a known site).
+- browser_back(): go back one page in the browser.
+- read_screen(window): the text a window shows now, to answer questions about it ("how much is
+  it?", "what does the page say?") without clicking anything.
 
 Rules:
 - Prefer direct tools (mail__...) when one fits: they are faster and reliable.
+- On the web, jump instead of clicking through menus: browser_search / browser_open first, then
+  do_task only for the clicks that are left (open a result, add to basket, press play).
+- To answer a question about what is on the screen, use read_screen, not do_task.
+- Scrolling: a do_task step can be "scroll down", "scroll up", "scroll down to the bottom".
 - When asked whether someone wrote, find the message and read it out right away: who, and what it says.
 - When the user dictates a message, use all of their words.
 - Risky actions (sending, paying, deleting) are confirmed with the user by the app itself; just call the tool.
@@ -357,6 +368,8 @@ class Iris:
         self.emit({"kind": "tool", "name": name, "args": args})
         if name == "do_task":
             return self.run_task(args)
+        if name in ("browser_search", "browser_open", "browser_back", "read_screen"):
+            return self.run_browser(name, args)
         if name == "stop_task":
             if self.agent:
                 self.agent.cancel.set()
@@ -380,6 +393,26 @@ class Iris:
         t = time.perf_counter()
         result = self.bridge.call(name, args)
         self.emit({"kind": "mcp", "tool": name, "ok": not result.startswith("ERROR"),
+                   "ms": round((time.perf_counter() - t) * 1000), "result": result[:300]})
+        return result
+
+    def run_browser(self, name: str, args: dict) -> str:
+        t = time.perf_counter()
+        try:
+            if name == "browser_search":
+                url = browser.search_url(args.get("site", "google"), args.get("query", ""))
+                result = browser.open_url(url) if url else f"I don't know how to search {args.get('site')}."
+            elif name == "browser_open":
+                result = browser.open_url(args.get("url", ""))
+            elif name == "browser_back":
+                result = browser.back()
+            else:
+                w = screen.resolve_window(args.get("window", ""), 1) if args.get("window") else None
+                result = browser.read(w)
+        except Exception as e:
+            result = f"ERROR: {e}"
+        self.emit({"kind": "mcp", "tool": f"browser__{name.removeprefix('browser_')}",
+                   "ok": not result.startswith(("ERROR", "No browser", "I could not")),
                    "ms": round((time.perf_counter() - t) * 1000), "result": result[:300]})
         return result
 

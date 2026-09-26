@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Click Accuracy Range</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #f4f4f6; font: 14px "Segoe UI", sans-serif; }
+  #status { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); padding: 4px 10px;
+            background: #222; color: #fff; border-radius: 6px; }
+  button.t { position: fixed; padding: 0; border: 1px solid #bbb; background: #fff; border-radius: 4px;
+             display: grid; place-items: center; cursor: pointer; }
+  #c { position: fixed; left: 0; top: 0; }
+  button.t canvas { display: block; }
+</style>
+</head>
+<body>
+<!-- Unlabeled icon buttons (real controls, visible to UI Automation as "Button") and icons
+     painted on a canvas (not in the accessibility tree at all). Every click is reported in
+     #status as "button:<id>", "canvas:<id>" or "miss". Positions are fractions of the window,
+     so the layout scales with a maximised window. -->
+<div id="status" role="status">ready</div>
+<canvas id="c"></canvas>
+<script>
+const SHAPES = {
+  circle: (g, s, c) => { g.beginPath(); g.arc(s/2, s/2, s*0.38, 0, 7); g.fillStyle = c; g.fill(); },
+  square: (g, s, c) => { g.fillStyle = c; g.fillRect(s*0.15, s*0.15, s*0.7, s*0.7); },
+  triangle: (g, s, c) => { g.beginPath(); g.moveTo(s/2, s*0.1); g.lineTo(s*0.9, s*0.88); g.lineTo(s*0.1, s*0.88);
+                           g.closePath(); g.fillStyle = c; g.fill(); },
+  star: (g, s, c) => { g.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? s*0.18 : s*0.45,
+                        a = Math.PI/5*i - Math.PI/2; g.lineTo(s/2 + r*Math.cos(a), s/2 + r*Math.sin(a)); }
+                        g.closePath(); g.fillStyle = c; g.fill(); },
+  ring: (g, s, c) => { g.beginPath(); g.arc(s/2, s/2, s*0.32, 0, 7); g.lineWidth = s*0.14; g.strokeStyle = c; g.stroke(); },
+};
+// id, shape, colour, size px, x fraction, y fraction, kind
+const TARGETS = [
+  ["b1", "circle", "#e74c3c", 14, 0.03, 0.10, "button"], ["b2", "square", "#3498db", 16, 0.97, 0.12, "button"],
+  ["b3", "triangle", "#27ae60", 20, 0.50, 0.95, "button"], ["b4", "star", "#f1c40f", 22, 0.96, 0.95, "button"],
+  ["b5", "ring", "#8e44ad", 18, 0.30, 0.50, "button"], ["b6", "circle", "#27ae60", 28, 0.70, 0.30, "button"],
+  ["b7", "square", "#e67e22", 14, 0.985, 0.55, "button"], ["b8", "star", "#e74c3c", 40, 0.15, 0.80, "button"],
+  ["c1", "circle", "#3498db", 16, 0.08, 0.40, "canvas"], ["c2", "triangle", "#e74c3c", 18, 0.92, 0.40, "canvas"],
+  ["c3", "square", "#27ae60", 14, 0.55, 0.12, "canvas"], ["c4", "star", "#8e44ad", 20, 0.40, 0.85, "canvas"],
+  ["c5", "ring", "#e67e22", 22, 0.80, 0.70, "canvas"], ["c6", "circle", "#f1c40f", 30, 0.25, 0.20, "canvas"],
+];
+const status = document.getElementById("status");
+const cv = document.getElementById("c"), g = cv.getContext("2d");
+function layout() {
+  cv.width = innerWidth; cv.height = innerHeight;
+  g.clearRect(0, 0, cv.width, cv.height);
+  document.querySelectorAll("button.t").forEach(b => b.remove());
+  for (const [id, shape, color, size, fx, fy, kind] of TARGETS) {
+    const x = Math.round(fx * innerWidth - size / 2), y = Math.round(fy * innerHeight - size / 2);
+    const icon = document.createElement("canvas"); icon.width = icon.height = size;
+    SHAPES[shape](icon.getContext("2d"), size, color);
+    if (kind === "button") {
+      const b = document.createElement("button"); b.className = "t";
+      Object.assign(b.style, { left: x + "px", top: y + "px", width: size + "px", height: size + "px" });
+      b.appendChild(icon); b.onclick = e => { e.stopPropagation(); status.textContent = "button:" + id; };
+      document.body.appendChild(b);
+    } else {
+      g.drawImage(icon, x, y);
+    }
+  }
+}
+cv.onclick = e => {
+  const hit = TARGETS.find(([id, s, c, size, fx, fy, kind]) => kind === "canvas" &&
+    Math.abs(e.clientX - fx * innerWidth) <= size / 2 + 1 && Math.abs(e.clientY - fy * innerHeight) <= size / 2 + 1);
+  status.textContent = hit ? "canvas:" + hit[0] : "miss";
+};
+addEventListener("resize", layout); layout();
+</script>
+</body>
+</html>

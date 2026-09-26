@@ -41,6 +41,8 @@ ALWAYS_CONFIRM = re.compile(
 MONEY_INTENT = re.compile(r"\b(checkout|check out|buy|pay\b|place (your )?order|purchase)", re.I)
 SEND_INTENT = re.compile(r"\b(send|post|submit|reply|отправ)", re.I)
 
+SCROLL_STEP = re.compile(r"^\s*scroll\b(?P<rest>.*)$", re.I)
+
 PASSWORD_WORDS = re.compile(r"pass(word|code|phrase)|\bpin\b|парол|пин-?код", re.I)
 
 RISK_Q = ("Is this action irreversible or does it send, pay, publish or delete something, "
@@ -97,6 +99,30 @@ def with_text(item: dict) -> dict:
     if m and not re.search(r"\b(into|in the|box|field)\b", item["do"], re.I):
         return {**item, "text": m.group("text").strip()}
     return item
+
+
+ZOOM_GOAL = ("This image is a zoomed-in crop of the screen around the target. Point precisely at the "
+             "centre of: {target}. Reply with action \"click\" and x, y in THIS image, or \"blocked\" "
+             "if it is not in the crop.")
+
+
+def locate(vision_backend, window, sx: int, sy: int, target: str, snap: bool = True, refine: bool = True):
+    """Where to click for a vision answer at screen point (sx, sy).
+    Returns ("control", element) when a real control is under/near the point, else
+    ("point", x, y) - refined by a zoomed second look when `refine` is on."""
+    if snap:
+        el = screen.snap_to_control(window, sx, sy)
+        if el is not None:
+            return ("control", el)
+    if refine:
+        try:
+            png, (left, top, zoom) = screen.capture_region(sx, sy)
+            act, _ = vision_backend.ask(png, ZOOM_GOAL.format(target=target))
+            if act.get("action") in ("click", "type") and "x" in act and "y" in act:
+                return ("point", int(left + act["x"] / zoom), int(top + act["y"] / zoom))
+        except Exception:
+            pass
+    return ("point", sx, sy)
 
 
 def interpret_confirmation(said: str, question: str) -> str:
@@ -237,6 +263,17 @@ class Agent:
             # a password must come from the vault, never as text a model produced or heard
             return Result(False, "I never type a password that was said or written out. "
                                  "It has to be a stored login.", [])
+        m = SCROLL_STEP.match(goal)
+        if m and max_actions == 1 and text is None and secret is None:
+            rest = m.group("rest").lower()
+            direction = "up" if re.search(r"\b(up|top|back)\b", rest) else "down"
+            notches = 25 if re.search(r"\b(top|bottom|end)\b", rest) else 3 if "little" in rest else 6
+            screen.bring_to_front(window)
+            screen.scroll_window(window, direction, notches)
+            time.sleep(0.5)
+            step = Step("kev", "scrolled", direction, 0)
+            self._record([], step)
+            return Result(True, f"Scrolled {direction}.", [step])
         if secret and vault.get(secret) is None:
             return Result(False, f"There is no stored login called '{secret}'.", steps)
         for _ in range(MAX_STEPS):
@@ -410,17 +447,22 @@ class Agent:
                 return None
         if self.cancel.is_set():
             return None
-        snapped = screen.snap_to_control(window, sx, sy) if a == "click" else None
-        if snapped is not None:
-            br = snapped.ctrl.BoundingRectangle
+        # a vision point is often a few px off a small icon: snap to the real control, or
+        # take a zoomed second look when there is none (canvas, games, custom UIs)
+        where = locate(self.vision, window, sx, sy, target, snap=(a == "click"))
+        if where[0] == "control":
+            br = where[1].ctrl.BoundingRectangle
             rect = (br.left, br.top, br.right, br.bottom)
+        else:
+            sx, sy = where[1], where[2]
+            rect = (sx - 20, sy - 20, sx + 20, sy + 20)
         self._show_target(rect, "vision", f"{short}  {ms / 1000:.1f} s")
         self._show_click(rect, "vision")
         try:
-            if snapped is not None:
-                screen.click(snapped)         # the real control under Claude's point: exact
+            if where[0] == "control":
+                screen.click(where[1])        # the real control under Claude's point: exact
             else:
-                screen.click_at(origin, act["x"], act["y"], window)
+                screen.click_point(sx, sy, window)
         except screen.NotOnTop:
             self.say("Something is covering that window, so I did not click.")
             return None

@@ -24,6 +24,7 @@ class Element:
     name: str
     ctrl: auto.Control
     password: bool = False
+    offscreen: bool = False
 
     @property
     def typeable(self) -> bool:
@@ -33,7 +34,8 @@ class Element:
     @property
     def label(self) -> str:
         kind = "PasswordField" if self.password else self.kind
-        return f"{kind} '{self.name}'" if self.name else f"{kind} (no label)"
+        label = f"{kind} '{self.name}'" if self.name else f"{kind} (no label)"
+        return label + (" (off screen)" if self.offscreen else "")
 
 
 @dataclass
@@ -163,9 +165,15 @@ def snapshot(window: auto.Control, max_depth: int = 25, tries: int = 4) -> Snaps
             time.sleep(0.3)
 
 
+OFFSCREEN_LIMIT = 80                            # labelled off-screen controls offered on a web page
+
+
 def _snapshot(window: auto.Control, max_depth: int = 25) -> Snapshot:
     elements, texts, unlabeled = {}, [], 0
-    for ctrl, _ in auto.WalkControl(page_root(window), maxDepth=max_depth):
+    root = page_root(window)
+    web = root is not window
+    offscreen_added = 0
+    for ctrl, _ in auto.WalkControl(root, maxDepth=max_depth):
         try:
             kind = ctrl.ControlTypeName
             ctrl.Name, ctrl.IsEnabled, ctrl.IsOffscreen    # touch now: a live page may drop it
@@ -176,8 +184,15 @@ def _snapshot(window: auto.Control, max_depth: int = 25) -> Snapshot:
             if len(name) > 1 and name not in texts:
                 texts.append(name)
             continue
-        if kind not in ACTIONABLE or not ctrl.IsEnabled or (ctrl.IsOffscreen and kind not in TYPEABLE):
+        if kind not in ACTIONABLE or not ctrl.IsEnabled:
             continue
+        offscreen = ctrl.IsOffscreen and kind not in TYPEABLE
+        if offscreen:
+            # on a web page a labelled control out of view is still reachable (scrolled into view
+            # before the click); elsewhere off-screen means hidden
+            if not (web and (ctrl.Name or "").strip() and offscreen_added < OFFSCREEN_LIMIT):
+                continue
+            offscreen_added += 1
         name = (ctrl.Name or "").strip()
         if not name:
             unlabeled += 1
@@ -186,7 +201,7 @@ def _snapshot(window: auto.Control, max_depth: int = 25) -> Snapshot:
             content = _text_of(ctrl)
             if content:
                 texts.append(f"{name or 'text field'} contains: {content[:120]}")
-        el = Element(f"e{len(elements)}", kind.removesuffix("Control"), name, ctrl, password)
+        el = Element(f"e{len(elements)}", kind.removesuffix("Control"), name, ctrl, password, offscreen)
         if name and _duplicate(el, elements.values()):
             continue                          # Qt nests same-named controls; offer each once
         elements[el.key] = el
@@ -259,14 +274,24 @@ def is_browser(window) -> bool:
     return window.ClassName in BROWSER_CLASSES
 
 
-def scroll(window, x: int, y: int, direction: str) -> None:
-    """Mouse wheel over a point of the window (vision fallback asked to scroll)."""
+def scroll(window, x: int, y: int, direction: str, notches: int = 5) -> None:
+    """Mouse wheel over a point of the window."""
     auto.MoveTo(x, y, waitTime=0)
     wheel = auto.WheelUp if direction == "up" else auto.WheelDown
-    wheel(wheelTimes=5, waitTime=0)
+    wheel(wheelTimes=notches, waitTime=0)
+
+
+def scroll_window(window, direction: str, notches: int = 6) -> None:
+    """Scroll the main content of a window: the web page in a browser, else the window's middle."""
+    r = page_root(window).BoundingRectangle
+    scroll(window, (r.left + r.right) // 2, (r.top + r.bottom) // 2, direction, notches)
 
 
 def click(el: Element) -> None:
+    if el.offscreen:
+        scroll_into_view(el)
+        import time
+        time.sleep(0.3)
     # waitTime=0: uiautomation otherwise sleeps 0.5 s after every pattern call;
     # wait_for_change() does the waiting instead, and only as long as needed
     c = el.ctrl
@@ -359,6 +384,9 @@ def bring_to_front(window: auto.Control, timeout: float = 1.5) -> bool:
     return False
 
 
+MAX_PIXELS = 1_150_000
+
+
 def capture(window: auto.Control, max_w: int = 1568) -> tuple[str, tuple[int, int, float]]:
     """PNG of the window as base64, plus (left, top, scale) to map image coords back to screen.
     Refuses when the window is not in front: the grab would show someone else's pixels."""
@@ -366,12 +394,32 @@ def capture(window: auto.Control, max_w: int = 1568) -> tuple[str, tuple[int, in
         raise NotOnTop(window.Name)
     r = window.BoundingRectangle
     img = ImageGrab.grab(bbox=(r.left, r.top, r.right, r.bottom), all_screens=True)
-    scale = min(1.0, max_w / img.width)
+    # the Claude API shrinks images above ~1.15 megapixels (or 1568 px on a side) before the
+    # model sees them, and the model then answers in the shrunken coordinates. Send an image it
+    # will not resize, so x, y map back exactly.
+    scale = min(1.0, max_w / img.width, max_w / img.height, (MAX_PIXELS / (img.width * img.height)) ** 0.5)
     if scale < 1.0:
         img = img.resize((int(img.width * scale), int(img.height * scale)))
     buf = io.BytesIO()
     img.save(buf, "PNG")
     return base64.b64encode(buf.getvalue()).decode(), (r.left, r.top, scale)
+
+
+def capture_region(x: int, y: int, half: int = 160, zoom: int = 2) -> tuple[str, tuple[int, int, float]]:
+    """A (2*half)^2 px square around a screen point, enlarged `zoom` times: a second, closer
+    look for the vision model when there is no control to snap to."""
+    from PIL import Image
+    left, top = max(0, x - half), max(0, y - half)
+    img = ImageGrab.grab(bbox=(left, top, left + 2 * half, top + 2 * half), all_screens=True)
+    img = img.resize((img.width * zoom, img.height * zoom), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return base64.b64encode(buf.getvalue()).decode(), (left, top, float(zoom))
+
+
+def click_point(x: int, y: int, window: auto.Control | None = None) -> None:
+    """Click an absolute screen point (guarded like click_at)."""
+    click_at((0, 0, 1.0), x, y, window)
 
 
 def snap_to_control(window, x: int, y: int, radius: int = 30):
