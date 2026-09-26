@@ -139,7 +139,8 @@
   .parts p { margin: 0; color: var(--soft); }
 
   /* swap grid */
-  .swap { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+  .swap { display: grid; gap: 16px; }
+  @media (min-width: 760px) { .swap { grid-template-columns: repeat(3, 1fr); } }
   .swap > div { background: var(--surface); border-radius: var(--r); padding: 20px 22px; }
   .swap h3 { margin: 0 0 10px; font-size: 20px; }
   .swap p { margin: 0 0 6px; color: var(--soft); font-size: 17px; }
@@ -298,11 +299,8 @@
     <p class="sub">No lock-in to one model vendor. Each part is a setting in <code>.env</code>.</p>
     <div class="swap">
       <div><h3>Ears</h3><p>AssemblyAI Streaming STT</p><p>AssemblyAI Voice Agent API</p></div>
-      <div><h3>Brain</h3><p>Claude</p><p>Any model on the AssemblyAI LLM Gateway</p><p>Ollama, vLLM, any OpenAI-compatible API</p></div>
+      <div><h3>Brain</h3><p>Claude</p><p>Any model on the AssemblyAI LLM Gateway</p><p>Any OpenAI-compatible API</p></div>
       <div><h3>Decisions</h3><p>Kev, local on your GPU</p><p>Jev by TypeSafe, in the cloud</p></div>
-      <div><h3>Eyes</h3><p>Claude vision</p></div>
-      <div><h3>Hands</h3><p>Any MCP server</p><p>The screen</p></div>
-      <div><h3>Voice</h3><p>Neural TTS</p><p>AssemblyAI voices</p></div>
     </div>
     <pre><code>BRAIN_BACKEND=openai        # AssemblyAI LLM Gateway
 BRAIN_MODEL=gemini-3.5-flash
