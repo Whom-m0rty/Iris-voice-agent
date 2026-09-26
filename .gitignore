@@ -1,0 +1,14 @@
+# secrets - never commit
+.env
+*.env
+client_secret*.json
+gmail_token.json
+
+# third-party / large, fetched by setup
+kev/
+tools/
+
+# local runtime output
+__pycache__/
+*.log
+bench/results_kev-latest.json

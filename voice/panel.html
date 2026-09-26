@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Iris — observer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0f1014; --card: #17181e; --line: #262833; --text: #f2f2f5; --muted: #9a9cab;
+    --kev: #2ecc71; --vision: #9b59ff; --confirm: #e74c3c; --mcp: #3498db; --accent: #d97757;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 17px/1.4 "Segoe UI", system-ui, sans-serif; }
+  .wrap { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  header { display: flex; align-items: center; gap: 12px; }
+  .logo { width: 38px; height: 38px; border-radius: 50%;
+          background: conic-gradient(from var(--a, 0deg), #d97757, #f4a261, #b388ff, #7aa2f7, #d97757);
+          animation: spin 6s linear infinite; }
+  @property --a { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+  @keyframes spin { to { --a: 360deg; } }
+  h1 { font-size: 22px; margin: 0; letter-spacing: .3px; }
+  .status { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 15px; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--muted); }
+  .dot.live { background: var(--kev); box-shadow: 0 0 10px var(--kev); }
+  .dot.work { background: var(--accent); box-shadow: 0 0 10px var(--accent); animation: blink 1s infinite; }
+  .dot.wait { background: var(--confirm); box-shadow: 0 0 12px var(--confirm); animation: blink .7s infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 6px; }
+  .goal { font-size: 21px; font-weight: 600; }
+  .goal.empty { color: var(--muted); font-weight: 400; font-size: 18px; }
+  .confirm { border-color: var(--confirm); box-shadow: 0 0 0 1px var(--confirm), 0 0 24px rgba(231,76,60,.25);
+             display: none; }
+  .confirm.on { display: block; animation: pulse 1.6s infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 1px var(--confirm), 0 0 40px rgba(231,76,60,.45); } }
+  .confirm .q { font-size: 20px; font-weight: 600; }
+  .confirm .heard { margin-top: 8px; color: var(--muted); }
+  .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .steps li { display: flex; gap: 10px; align-items: center; }
+  .badge { flex: none; font-size: 13px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+           color: #0f1014; min-width: 104px; text-align: center; }
+  .b-kev { background: var(--kev); } .b-vision { background: var(--vision); color: #fff; }
+  .b-mcp { background: var(--mcp); color: #fff; } .b-confirm { background: var(--confirm); color: #fff; }
+  .b-plan { background: var(--line); color: var(--muted); }
+  .steps .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .steps li.pending .txt { color: var(--muted); }
+  .chat { display: flex; flex-direction: column; gap: 8px; max-height: 34vh; overflow-y: auto; }
+  .msg { padding: 8px 12px; border-radius: 12px; max-width: 92%; }
+  .msg.user { align-self: flex-end; background: #2a2d3a; }
+  .msg.agent { align-self: flex-start; background: #1f2a24; border: 1px solid #28412f; }
+  .msg .who { font-size: 12px; color: var(--muted); }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat { text-align: center; }
+  .stat b { display: block; font-size: 26px; }
+  .stat span { color: var(--muted); font-size: 13px; }
+  .result { margin-top: 10px; font-weight: 600; }
+  .result.ok { color: var(--kev); } .result.bad { color: var(--confirm); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo" aria-hidden="true"></div>
+    <h1>Iris</h1>
+    <div class="status"><div class="dot" id="dot"></div><span id="status">connecting…</span></div>
+  </header>
+
+  <div class="card confirm" id="confirm" role="alert">
+    <div class="label">Waiting for a spoken yes</div>
+    <div class="q" id="cq"></div>
+    <div class="heard" id="cheard"></div>
+  </div>
+
+  <div class="card">
+    <div class="label">Doing now</div>
+    <div class="goal empty" id="goal">Nothing yet — just ask.</div>
+    <ul class="steps" id="steps" style="margin-top:12px"></ul>
+    <div class="result" id="result"></div>
+  </div>
+
+  <div class="card">
+    <div class="label">Conversation</div>
+    <div class="chat" id="chat"></div>
+  </div>
+
+  <div class="card stats">
+    <div class="stat"><b id="sKev">0</b><span>steps by Kev</span></div>
+    <div class="stat"><b id="sVision">0</b><span>by Claude vision</span></div>
+    <div class="stat"><b id="sMs">–</b><span>avg Kev decision</span></div>
+    <div class="stat"><b id="sMcp">0</b><span>API calls</span></div>
+    <div class="stat"><b id="sAsk">0</b><span>confirmations</span></div>
+    <div class="stat"><b id="sNo">0</b><span>cancelled by you</span></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const stats = { kev: 0, vision: 0, kevMs: [], mcp: 0, ask: 0, no: 0 };
+let plan = [];
+
+function setStatus(kind, text) { $("dot").className = "dot " + kind; $("status").textContent = text; }
+function esc(s) { return String(s ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+
+function renderStats() {
+  $("sKev").textContent = stats.kev; $("sVision").textContent = stats.vision; $("sMcp").textContent = stats.mcp;
+  $("sAsk").textContent = stats.ask; $("sNo").textContent = stats.no;
+  $("sMs").textContent = stats.kevMs.length
+    ? Math.round(stats.kevMs.reduce((a, b) => a + b, 0) / stats.kevMs.length) + " ms" : "–";
+}
+
+function addChat(who, text) {
+  const d = document.createElement("div");
+  d.className = "msg " + who;
+  d.innerHTML = `<div class="who">${who === "user" ? "You" : "Iris"}</div>${esc(text)}`;
+  $("chat").appendChild(d);
+  while ($("chat").children.length > 14) $("chat").firstChild.remove();
+  $("chat").scrollTop = 1e9;
+}
+
+function addStep(badgeClass, badge, text, pending = false) {
+  const li = document.createElement("li");
+  if (pending) li.className = "pending";
+  li.innerHTML = `<span class="badge ${badgeClass}">${esc(badge)}</span><span class="txt">${esc(text)}</span>`;
+  $("steps").appendChild(li);
+  return li;
+}
+
+function on(ev) {
+  switch (ev.kind) {
+    case "ready": setStatus("live", "listening"); break;
+    case "user": addChat("user", ev.text); break;
+    case "agent": if (ev.text) addChat("agent", ev.text); break;
+    case "task_start":
+      $("goal").textContent = ev.goal; $("goal").classList.remove("empty");
+      $("steps").innerHTML = ""; $("result").textContent = ""; $("result").className = "result";
+      plan = (ev.steps || []).map(s => addStep("b-plan", "planned", s.do + (s.secret ? " (stored login)" : ""), true));
+      setStatus("work", "working");
+      break;
+    case "step": {
+      const li = plan.shift();
+      if (li) li.remove();
+      const vision = ev.via === "vision";
+      if (vision) stats.vision++; else { stats.kev++; stats.kevMs.push(ev.ms); }
+      const badge = vision ? `Claude ${(ev.ms / 1000).toFixed(1)} s` : `Kev ${ev.ms} ms`;
+      const li2 = addStep(vision ? "b-vision" : "b-kev", badge, `${ev.action} ${ev.target}`);
+      const first = $("steps").querySelector("li.pending");
+      if (first) $("steps").insertBefore(li2, first);
+      renderStats();
+      break;
+    }
+    case "confirm":
+      stats.ask++; renderStats();
+      $("cq").textContent = ev.question; $("cheard").textContent = "Listening for your answer…";
+      $("confirm").classList.add("on"); setStatus("wait", "waiting for your yes");
+      break;
+    case "answer":
+      $("cheard").textContent = `Heard: “${ev.said}”`;
+      setTimeout(() => $("confirm").classList.remove("on"), 1200);
+      setStatus("work", "working");
+      break;
+    case "mcp":
+      stats.mcp++; if (ev.result === "cancelled by user") stats.no++; renderStats();
+      addStep(ev.ok ? "b-mcp" : "b-confirm", ev.ms != null ? `API ${ev.ms} ms` : "API",
+              `${ev.tool.replace("__", " › ")}${ev.ok ? "" : " — not done"}`);
+      break;
+    case "task_done":
+      plan.forEach(li => li.remove()); plan = [];
+      if (/Cancelled|did not/i.test(ev.summary)) { stats.no++; renderStats(); }
+      $("result").textContent = (ev.ok ? "✓ " : "✕ ") + ev.summary + (ev.seconds ? `  (${ev.seconds} s)` : "");
+      $("result").className = "result " + (ev.ok ? "ok" : "bad");
+      $("confirm").classList.remove("on");
+      setStatus("live", "listening");
+      break;
+    case "stop": setStatus("wait", "stopping"); break;
+    case "closed": setStatus("", "disconnected"); break;
+    case "error": addChat("agent", "⚠ " + (ev.message || ev.code)); break;
+  }
+}
+
+function connect() {
+  const ws = new WebSocket("ws://127.0.0.1:8770");
+  ws.onopen = () => setStatus("live", "connected");
+  ws.onmessage = e => { try { on(JSON.parse(e.data)); } catch (err) { console.error(err); } };
+  ws.onclose = () => { setStatus("", "reconnecting…"); setTimeout(connect, 1000); };
+}
+connect();
+</script>
+</body>
+</html>
