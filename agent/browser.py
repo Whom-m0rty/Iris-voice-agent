@@ -50,9 +50,9 @@ def open_url(url: str, window=None, timeout: float = 8.0) -> str:
     if not screen.bring_to_front(w):
         return "I could not bring the browser to the front."
     before = w.Name
-    auto.SendKeys("{Ctrl}t", waitTime=0.4)           # new tab; its address bar has the focus
+    screen.send_keys("{Ctrl}t", waitTime=0.4)           # new tab; its address bar has the focus
     screen.type_keys(url)
-    auto.SendKeys("{Enter}", waitTime=0)             # navigation only: nothing is sent or bought
+    screen.send_keys("{Enter}", waitTime=0)             # navigation only: nothing is sent or bought
     end = time.perf_counter() + timeout
     while time.perf_counter() < end:
         time.sleep(0.3)
@@ -67,7 +67,7 @@ def back(window=None) -> str:
     w = window or browser_window()
     if w is None or not screen.bring_to_front(w):
         return "No browser window to go back in."
-    auto.SendKeys("{Alt}{Left}", waitTime=1.2)
+    screen.send_keys("{Alt}{Left}", waitTime=1.2)
     return f"Went back. Page title: {(browser_window() or w).Name}"
 
 

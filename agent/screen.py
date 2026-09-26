@@ -108,6 +108,40 @@ def guard(window) -> None:
         raise Protected(f"'{window.Name}' is on the do-not-touch list (protected_apps.txt)")
 
 
+def _hwnd_protected(hwnd: int) -> bool:
+    import ctypes
+    from ctypes import wintypes
+    entries = _protected_entries()
+    if not entries or not hwnd:
+        return False
+    pid = wintypes.DWORD()
+    ctypes.windll.user32.GetWindowThreadProcessId(_top_level(hwnd), ctypes.byref(pid))
+    path = process_path(pid.value).lower()
+    return any(e in path for e in entries)
+
+
+def guard_foreground() -> None:
+    """Keystrokes go to whatever window has the focus. If a protected app took it (a
+    notification clicked, a window that popped up), nothing is typed."""
+    import ctypes
+    if _hwnd_protected(ctypes.windll.user32.GetForegroundWindow()):
+        raise Protected("the window in front is on the do-not-touch list (protected_apps.txt)")
+
+
+def guard_point(x: int, y: int) -> None:
+    """Pixels at this screen point must not belong to a protected app."""
+    import ctypes
+    from ctypes import wintypes
+    if _hwnd_protected(ctypes.windll.user32.WindowFromPoint(wintypes.POINT(x, y))):
+        raise Protected(f"point ({x}, {y}) is on a window from the do-not-touch list")
+
+
+def send_keys(keys: str, **kw) -> None:
+    """uiautomation SendKeys, but never into a protected app."""
+    guard_foreground()
+    auto.SendKeys(keys, **kw)
+
+
 def app_windows() -> list:
     """Visible top-level windows a person works in: not notifications, tooltips or toolbars
     (Telegram's pop-up notification is a 320x80 window titled 'TelegramDesktop')."""
@@ -357,12 +391,14 @@ def type_secret(el: Element, value: str) -> None:
     """Fill a password field from the vault. Keystrokes only: the value never goes
     through ValuePattern, logs or any model."""
     el.ctrl.Click(simulateMove=False, waitTime=0)
+    guard_foreground()
     for ch in value:              # char by char: no SendKeys escape syntax to get wrong
         auto.SendUnicodeChar(ch)
 
 
 def type_keys(text: str) -> None:
     """Type like a person, one character at a time (any language, no SendKeys escapes)."""
+    guard_foreground()
     for ch in text:
         auto.SendUnicodeChar(ch)
 
@@ -383,7 +419,7 @@ def type_text(el: Element, text: str) -> None:
         except Exception:
             pass
     el.ctrl.Click(simulateMove=False, waitTime=0)
-    auto.SendKeys("{Ctrl}a", waitTime=0)          # replace whatever the field held
+    send_keys("{Ctrl}a", waitTime=0)              # replace whatever the field held
     type_keys(text)
 
 
@@ -403,6 +439,7 @@ def bring_to_front(window: auto.Control, timeout: float = 1.5) -> bool:
     Windows refuses SetForegroundWindow to background processes, hence the Alt tap."""
     import ctypes
     import time
+    guard(window)
     user32 = ctypes.windll.user32
     hwnd = window.NativeWindowHandle
     end = time.perf_counter() + timeout
@@ -455,6 +492,7 @@ def capture_region(x: int, y: int, half: int = 160, zoom: int = 2) -> tuple[str,
     """A (2*half)^2 px square around a screen point, enlarged `zoom` times: a second, closer
     look for the vision model when there is no control to snap to."""
     from PIL import Image
+    guard_point(x, y)
     left, top = max(0, x - half), max(0, y - half)
     img = ImageGrab.grab(bbox=(left, top, left + 2 * half, top + 2 * half), all_screens=True)
     img = img.resize((img.width * zoom, img.height * zoom), Image.LANCZOS)
@@ -496,6 +534,7 @@ def click_at(origin: tuple[int, int, float], x: int, y: int, window: auto.Contro
     from ctypes import wintypes
     left, top, scale = origin
     sx, sy = int(left + x / scale), int(top + y / scale)
+    guard_point(sx, sy)
     if window is not None:
         hit = ctypes.windll.user32.WindowFromPoint(wintypes.POINT(sx, sy))
         if _top_level(hit) != _top_level(window.NativeWindowHandle):

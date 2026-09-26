@@ -415,6 +415,9 @@ class Agent:
         except screen.NotOnTop:
             self.say("I cannot see that window, another one is covering it.")
             return None
+        except screen.Protected:
+            self.say("That app is on your do-not-touch list, so I left it alone.")
+            return None
         full_goal = goal + (f' (text to type: "{text}")' if text else "")
         if secret:  # the model only learns that a password field must be clicked, not the value
             full_goal += " (click the password field; the app types the password itself)"
@@ -478,12 +481,16 @@ class Agent:
         except screen.NotOnTop:
             self.say("Something is covering that window, so I did not click.")
             return None
+        except screen.Protected:
+            self.say("That spot belongs to an app on your do-not-touch list, so I did not click.")
+            return None
         time.sleep(0.15)
         action = "clicked"
         if secret:
             if not screen.focused_is_password():
                 self.say("That was not a password field, so I did not type the password.")
                 return None
+            screen.guard_foreground()
             for ch in vault.get(secret):
                 screen.auto.SendUnicodeChar(ch)
             action = "entered stored password into"
@@ -491,7 +498,7 @@ class Agent:
             if screen.focused_is_password():   # model text never goes into a password field
                 self.say("That is a password field. I only fill it from your stored logins.")
                 return None
-            screen.auto.SendKeys(act.get("text", ""), interval=0.01, waitTime=0)
+            screen.send_keys(act.get("text", ""), interval=0.01, waitTime=0)
             action = "typed into"
         if act.get("say"):
             self.say(act["say"])
