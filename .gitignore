@@ -14,3 +14,4 @@ __pycache__/
 bench/results_kev-latest.json
 protected_apps.txt
 iris_prefs.json
+docs/assets/src/
