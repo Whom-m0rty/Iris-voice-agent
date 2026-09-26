@@ -359,6 +359,9 @@ def bring_to_front(window: auto.Control, timeout: float = 1.5) -> bool:
     return False
 
 
+MAX_PIXELS = 1_150_000
+
+
 def capture(window: auto.Control, max_w: int = 1568) -> tuple[str, tuple[int, int, float]]:
     """PNG of the window as base64, plus (left, top, scale) to map image coords back to screen.
     Refuses when the window is not in front: the grab would show someone else's pixels."""
@@ -366,12 +369,32 @@ def capture(window: auto.Control, max_w: int = 1568) -> tuple[str, tuple[int, in
         raise NotOnTop(window.Name)
     r = window.BoundingRectangle
     img = ImageGrab.grab(bbox=(r.left, r.top, r.right, r.bottom), all_screens=True)
-    scale = min(1.0, max_w / img.width)
+    # the Claude API shrinks images above ~1.15 megapixels (or 1568 px on a side) before the
+    # model sees them, and the model then answers in the shrunken coordinates. Send an image it
+    # will not resize, so x, y map back exactly.
+    scale = min(1.0, max_w / img.width, max_w / img.height, (MAX_PIXELS / (img.width * img.height)) ** 0.5)
     if scale < 1.0:
         img = img.resize((int(img.width * scale), int(img.height * scale)))
     buf = io.BytesIO()
     img.save(buf, "PNG")
     return base64.b64encode(buf.getvalue()).decode(), (r.left, r.top, scale)
+
+
+def capture_region(x: int, y: int, half: int = 160, zoom: int = 2) -> tuple[str, tuple[int, int, float]]:
+    """A (2*half)^2 px square around a screen point, enlarged `zoom` times: a second, closer
+    look for the vision model when there is no control to snap to."""
+    from PIL import Image
+    left, top = max(0, x - half), max(0, y - half)
+    img = ImageGrab.grab(bbox=(left, top, left + 2 * half, top + 2 * half), all_screens=True)
+    img = img.resize((img.width * zoom, img.height * zoom), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return base64.b64encode(buf.getvalue()).decode(), (left, top, float(zoom))
+
+
+def click_point(x: int, y: int, window: auto.Control | None = None) -> None:
+    """Click an absolute screen point (guarded like click_at)."""
+    click_at((0, 0, 1.0), x, y, window)
 
 
 def snap_to_control(window, x: int, y: int, radius: int = 30):
