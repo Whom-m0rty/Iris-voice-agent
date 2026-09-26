@@ -51,6 +51,19 @@ Around both:
 - **Brain / vision backends**: a local Claude Code login (`claude -p`, personal use) or the
   Anthropic API (`ANTHROPIC_API_KEY`).
 
+## Build it your way
+
+Every part is swappable in `.env`:
+
+| Part | Options | Status |
+|---|---|---|
+| Ears | AssemblyAI Universal-Streaming (`voice/iris.py`) or the AssemblyAI Voice Agent API (`voice/client.py`) | both run; demo on streaming |
+| Brain | Claude (`BRAIN_BACKEND=cli` Claude Code login, `=api` Anthropic API) or `BRAIN_BACKEND=openai`: any model on the **AssemblyAI LLM Gateway** (Claude, GPT, Gemini, Qwen, DeepSeek… 47 listed) or any OpenAI-compatible endpoint (Ollama, vLLM) via `BRAIN_BASE_URL` / `BRAIN_API_KEY` / `BRAIN_MODEL` | Claude: demo. Gateway: tested with `qwen3.5-4b-32k-fast` (0.85 s per plan); other models need a plan that includes them |
+| Decisions | Kev locally, or **Jev** (TypeSafe, cloud) through the same `/v1/systemone` API: `SYSTEMONE_URL`, `SYSTEMONE_KEY` | Kev measured; Jev API-compatible, not benchmarked by us |
+| Eyes | Claude vision via Claude Code or the Anthropic API (`VISION_BACKEND=api`) | measured |
+| Hands | any MCP server becomes voice tools; the screen otherwise | Gmail tested |
+| Voice | edge-tts neural voices, or AssemblyAI Voice Agent voices | both run |
+
 ## Measured (26.09, RTX 5060 Ti) — `bench/bench_full.py`
 
 | | Result | Latency |

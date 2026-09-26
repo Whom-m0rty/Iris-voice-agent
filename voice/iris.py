@@ -198,7 +198,11 @@ class APIBrain:
 
 
 def make_brain(prompt: str):
-    return APIBrain(prompt) if os.environ.get("BRAIN_BACKEND") == "api" else Brain(prompt)
+    backend = os.environ.get("BRAIN_BACKEND", "cli")
+    if backend == "openai":                   # any OpenAI-compatible endpoint, AssemblyAI LLM Gateway by default
+        from brains import OpenAICompatibleBrain
+        return OpenAICompatibleBrain(prompt)
+    return APIBrain(prompt) if backend == "api" else Brain(prompt)
 
 
 class Voice:

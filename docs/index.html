@@ -63,6 +63,7 @@
   table { width: 100%; border-collapse: collapse; font-size: 15px; margin-top: 18px; }
   th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { color: var(--muted); font-weight: 600; }
+  td { overflow-wrap: anywhere; }
   pre { background: var(--code); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
         overflow-x: auto; font-size: 14px; line-height: 1.5; }
   code { font-family: "Cascadia Code", Consolas, monospace; }
@@ -84,7 +85,7 @@
   <header class="top">
     <div class="logo" aria-hidden="true"></div><b>Iris</b>
     <nav>
-      <a href="#how">How it works</a><a href="#trust">Trust</a><a href="#try">Try it</a>
+      <a href="#how">How it works</a><a href="#flex">Your way</a><a href="#trust">Trust</a><a href="#try">Try it</a>
       <a href="https://github.com/Whom-m0rty/Iris-voice-agent">GitHub</a>
     </nav>
   </header>
@@ -167,6 +168,33 @@
     </div>
   </section>
 
+  <section id="flex">
+    <h2>Build it your way</h2>
+    <p class="sub">Every part is swappable with a line in <code>.env</code>. Nothing ties Iris to one model vendor —
+      except that it hears through AssemblyAI, in one of two ways.</p>
+    <table>
+      <tr><th>Part</th><th>Options</th><th>Status</th></tr>
+      <tr><td>Ears</td><td><b>AssemblyAI Universal-Streaming</b> speech-to-text (<code>voice/iris.py</code>) —
+        or the whole voice loop on the <b>AssemblyAI Voice Agent API</b> (<code>voice/client.py</code>)</td>
+        <td>both run; the demo uses streaming</td></tr>
+      <tr><td>Brain</td><td><b>Claude</b> (Claude Code login or Anthropic API) —
+        or <b>any model on the AssemblyAI LLM Gateway</b> (Claude, GPT, Gemini, Qwen, DeepSeek, Nemotron… 47 listed) —
+        or any OpenAI-compatible endpoint, local ones included (Ollama, vLLM)</td>
+        <td>Claude: demo. Gateway: tested with Qwen 3.5 4B (0.85 s per plan); other models depend on your AssemblyAI plan</td></tr>
+      <tr><td>Decisions</td><td><b>Kev</b>, open weights, on your GPU — or <b>Jev</b> by TypeSafe in the cloud:
+        the same <code>/v1/systemone</code> API, so no GPU needed (<code>SYSTEMONE_URL</code>, <code>SYSTEMONE_KEY</code>)</td>
+        <td>Kev: measured. Jev: API-compatible, not benchmarked by us</td></tr>
+      <tr><td>Eyes</td><td>Claude vision, through Claude Code or the Anthropic API</td><td>measured (14/14 clicks)</td></tr>
+      <tr><td>Hands</td><td>any <b>MCP server</b> becomes voice tools (Gmail included) — otherwise the screen</td><td>Gmail tested</td></tr>
+      <tr><td>Voice</td><td>neural TTS (edge-tts) — or AssemblyAI Voice Agent voices</td><td>both run</td></tr>
+    </table>
+    <pre><code># .env examples
+BRAIN_BACKEND=openai                 # AssemblyAI LLM Gateway, your AssemblyAI key
+BRAIN_MODEL=gemini-3.5-flash         # or gpt-5-mini, claude-sonnet-4-6, qwen3.5-4b-32k-fast ...
+SYSTEMONE_URL=https://&lt;jev-endpoint&gt;  # Jev instead of local Kev
+SYSTEMONE_KEY=...</code></pre>
+  </section>
+
   <section id="trust">
     <h2>Why you can trust it with your computer</h2>
     <p class="sub">Measured on our benchmarks (in the repo, <code>bench/</code>). The test sets are ours;
@@ -212,7 +240,8 @@ cd Iris-voice-agent</code></pre></li>
       <li>English only for now (the speech models understand 18 languages; the voice and prompts are English).</li>
       <li>It works in apps that are already open; it doesn't launch programs yet.</li>
       <li>Long flows on heavy websites are slow: each vision step takes 2–7 seconds.</li>
-      <li>It needs an NVIDIA GPU for Kev today; a cloud decision model (Jev) can replace it.</li>
+      <li>Locally, Kev needs an NVIDIA GPU; Jev in the cloud speaks the same API but we have not benchmarked it.</li>
+      <li>Which Gateway models you can use depends on your AssemblyAI plan: our hackathon account had Qwen 3.5 4B, rate-limited.</li>
     </ul>
   </section>
 
