@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Iris: pitch deck</title>
+<meta name="description" content="Iris, a voice agent that operates Windows for blind and older users. Pitch deck for the lablab.ai × AssemblyAI Voice Agent Hackathon.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Atkinson+Hyperlegible+Next:wght@400;600;800&family=Atkinson+Hyperlegible+Mono:wght@400&family=Reenie+Beanie&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #e9e9e5; --grid: rgba(20, 30, 25, .07); --ink: #141414; --soft: #4d504c; --fog: #a3a59f;
+    --green: #0a7050; --green-deep: #075c40; --card: #f6f6f2; --rule: rgba(0,0,0,.16);
+    --serif: "Instrument Serif", "Times New Roman", serif;
+    --text: "Atkinson Hyperlegible Next", "Segoe UI", system-ui, sans-serif;
+    --mono: "Atkinson Hyperlegible Mono", Consolas, monospace;
+    --hand: "Reenie Beanie", cursive;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #cfd0cb; color: var(--ink); font-family: var(--text); overflow: hidden; }
+  img { display: block; max-width: 100%; height: auto; }
+
+  /* a 1920x1080 stage, scaled to the window */
+  .deck { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; transform-origin: 0 0; }
+  .slide { position: absolute; inset: 0; overflow: hidden; padding: 64px 96px 72px; display: none;
+           background-color: var(--paper);
+           background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+           background-size: 96px 96px; }
+  .slide.on { display: block; }
+  .meta { position: absolute; left: 96px; right: 96px; top: 44px; display: grid; grid-template-columns: 1fr auto 1fr; font-size: 20px; }
+  .meta b { font: 28px/1 var(--serif); font-weight: 400; }
+  .meta span:nth-child(2) { color: var(--green); }
+  .meta span:last-child { justify-self: end; font-weight: 600; }
+  .crit { position: absolute; right: 96px; bottom: 96px; font: 32px/1 var(--hand); color: var(--green); }
+  .note { position: absolute; font: 38px/1 var(--hand); color: var(--green); white-space: nowrap; }
+  .boil { filter: url(#boil); }
+
+  h1, h2 { font-family: var(--serif); font-weight: 400; margin: 0; letter-spacing: -.01em; }
+  h2 { font-size: 104px; line-height: .98; max-width: 16ch; }
+  h2 i, .g { color: var(--green); font-style: italic; }
+  .lead { font-size: 34px; line-height: 1.4; color: var(--soft); max-width: 44ch; margin: 30px 0 0; }
+  .body { position: absolute; left: 96px; right: 96px; top: 150px; bottom: 110px; }
+  .small { font-size: 20px; color: var(--soft); }
+  .src { position: absolute; left: 96px; bottom: 40px; font-size: 20px; color: var(--soft); max-width: 1300px; }
+
+  /* 1 title */
+  .t-title { display: grid; place-items: center; text-align: center; }
+  .t-title .over { font: italic 44px/1 var(--serif); margin: 150px 0 0; }
+  .big { font: 400 560px/.78 var(--serif); color: var(--green); letter-spacing: -.02em; display: flex; justify-content: center; margin-top: 30px; }
+  .t-title .mic { position: absolute; left: 50%; top: 250px; width: 300px; transform: translateX(-46%); filter: drop-shadow(0 30px 34px rgba(0,0,0,.3)); }
+  .t-title .by { position: absolute; left: 0; right: 0; bottom: 120px; font-size: 30px; color: var(--soft); }
+  .t-title .by em { font: italic 38px/1 var(--serif); color: var(--ink); }
+  .key { position: absolute; filter: drop-shadow(0 20px 22px rgba(0,0,0,.22)); }
+
+  /* shared layouts */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; height: 100%; }
+  .quote { font: 400 136px/.95 var(--serif); margin: 0; }
+  .stat { border-top: 2px solid var(--ink); padding-top: 18px; }
+  .stat b { display: block; font: 400 120px/1 var(--serif); color: var(--green); }
+  .stat span { display: block; font-size: 30px; line-height: 1.35; color: var(--soft); margin-top: 8px; max-width: 26ch; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 48px; margin-top: 70px; }
+  .tag { display: inline-block; font: 600 17px/1 var(--text); letter-spacing: .06em; text-transform: uppercase; color: var(--green);
+         border: 1.5px solid var(--green); padding: 6px 10px; border-radius: 4px; }
+
+  table.t { width: 100%; border-collapse: collapse; font-size: 31px; }
+  table.t th { text-align: left; font: 600 18px/1.2 var(--text); letter-spacing: .06em; text-transform: uppercase; color: var(--soft); padding: 0 16px 14px 0; border-bottom: 2px solid var(--ink); }
+  table.t td { padding: 22px 18px 22px 0; border-bottom: 1px solid var(--rule); vertical-align: top; line-height: 1.3; }
+  table.t td:first-child { font: 400 46px/1.05 var(--serif); width: 26%; }
+  table.t .no { color: var(--green); font-weight: 600; }
+
+  .talk { list-style: none; margin: 0; padding: 30px 36px; background: var(--card); box-shadow: 0 30px 50px -34px rgba(0,0,0,.4); }
+  .talk li { display: grid; grid-template-columns: 90px 1fr; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+  .talk li:last-child { border-bottom: 0; }
+  .talk .who { font-size: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); padding-top: 9px; }
+  .talk .said { font: 36px/1.2 var(--serif); }
+  .talk .ask .said { color: var(--green-deep); font-style: italic; }
+
+  .cols { display: grid; gap: 0; border-top: 2px solid var(--ink); }
+  .col { padding: 26px 30px 10px 0; }
+  .col + .col { border-left: 1px solid var(--rule); padding-left: 30px; }
+  .col h3 { font: 400 56px/1.02 var(--serif); margin: 14px 0 16px; }
+  .col p, .col li { font-size: 28px; line-height: 1.4; color: var(--soft); margin: 0 0 12px; }
+  .col ul { margin: 0; padding-left: 1.1em; }
+  .col .hand { font: 38px/1 var(--hand); color: var(--green); }
+
+  .flow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 18px; margin-top: 56px; align-items: stretch; }
+  .node { background: var(--card); padding: 28px 26px 26px; border-top: 2px solid var(--ink); position: relative; }
+  .node.aai { border-top-color: var(--green); }
+  .node .hand { font: 34px/1 var(--hand); color: var(--green); }
+  .node h3 { font: 400 48px/1.02 var(--serif); margin: 8px 0 12px; }
+  .node p { font-size: 25px; line-height: 1.4; color: var(--soft); margin: 0; }
+  .node .ms { display: block; margin-top: 18px; font: 600 22px/1 var(--mono); color: var(--ink); }
+  .node + .node::before { content: "→"; position: absolute; left: -17px; top: 44%; font-size: 28px; color: var(--soft); }
+
+  .grid6 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin-top: 50px; border-top: 2px solid var(--ink); }
+  .cell { padding: 32px 30px 34px 0; border-bottom: 1px solid var(--rule); }
+  .cell:not(:nth-child(3n+1)) { border-left: 1px solid var(--rule); padding-left: 28px; }
+  .cell .say { font: italic 50px/1.1 var(--serif); color: var(--green); }
+  .cell p { font-size: 27px; line-height: 1.4; color: var(--soft); margin: 12px 0 0; }
+
+  .payers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-top: 2px solid var(--ink); margin-top: 40px; }
+  .payer { padding: 22px 26px 0 0; }
+  .payer + .payer { border-left: 1px solid var(--rule); padding-left: 26px; }
+  .payer .n { font: 64px/1 var(--serif); color: var(--green); }
+  .payer h3 { font: 400 40px/1.05 var(--serif); margin: 6px 0 12px; }
+  .payer p { font-size: 24px; line-height: 1.4; color: var(--soft); margin: 0 0 12px; }
+  .payer .price { font: 600 23px/1.3 var(--mono); color: var(--ink); }
+
+  .close { text-align: center; }
+  .close .meta { text-align: left; }
+  .close h2 { font-size: 150px; max-width: none; margin: 110px auto 0; }
+  .close .links { margin-top: 34px; font-size: 30px; }
+  .close .links a { color: var(--ink); }
+  .close .lineup { position: absolute; left: 50%; bottom: -40px; width: 1500px; transform: translateX(-50%); }
+
+  /* controls (hidden in print) */
+  .hud { position: fixed; right: 18px; bottom: 10px; opacity: .55; transition: opacity .2s; z-index: 5; display: flex; gap: 8px; align-items: center; font: 14px var(--text); color: var(--soft); }
+  .hud button { font: inherit; min-width: 44px; min-height: 44px; border: 1.5px solid var(--ink); background: var(--paper); border-radius: 999px; cursor: pointer; }
+  .hud:hover, .hud:focus-within { opacity: 1; }
+  .hud button:focus-visible { outline: 3px solid var(--green); outline-offset: 2px; }
+
+  @media print {
+    @page { size: 1920px 1080px; margin: 0; }
+    html, body { overflow: visible; background: var(--paper); height: auto; }
+    .deck { position: static; transform: none !important; width: 1920px; height: auto; }
+    .slide { display: block !important; position: relative; width: 1920px; height: 1080px; page-break-after: always; break-after: page; }
+    .hud { display: none; }
+    .boil { filter: none; }
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <filter id="boil" x="-5%" y="-5%" width="110%" height="110%">
+    <feTurbulence id="boil-noise" type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="1"/>
+    <feDisplacementMap in="SourceGraphic" scale="2.6"/>
+  </filter>
+</svg>
+
+<main class="deck" id="deck" aria-roledescription="slide deck">
+
+<!-- 1 -->
+
+<section class="slide t-title on" aria-label="1 of 13: Iris">
+  <p class="over">The voice that uses your computer for you</p>
+  <div class="big" aria-hidden="true"><span>I</span><span>R</span><span>I</span><span>S</span></div>
+  <h1 class="vh" style="position:absolute;left:-9999px">Iris</h1>
+  <img class="mic" src="../assets/hero-mic.webp" width="848" height="1400" alt="">
+  <img class="key" src="../assets/key-y.webp" alt="" style="left:120px;bottom:90px;width:150px;transform:rotate(-16deg)">
+  <img class="key" src="../assets/key-esc.webp" alt="" style="right:140px;top:300px;width:130px;transform:rotate(12deg)">
+  <span class="note" style="left:230px;top:330px" aria-hidden="true">“yes?”</span>
+  <span class="note" style="right:330px;bottom:250px" aria-hidden="true">Ctrl+Alt+M</span>
+  <p class="by">A voice agent for Windows, heard by <em>AssemblyAI</em>, for people who can't see the screen.<br>team revived · lablab.ai × AssemblyAI Voice Agent Hackathon · September 2026</p>
+</section>
+
+<!-- 2 -->
+<section class="slide" aria-label="2 of 13: The problem">
+  <div class="meta"><b>Iris.</b><span>The problem</span><span>02 / 13</span></div>
+  <div class="body split" style="align-items:start">
+    <div>
+      <p class="quote">“Button, button, <i class="g">button.</i>”</p>
+      <p class="lead">That is what a screen reader says when an app doesn't label its buttons. Many don't. Blind users then need a sighted person to do it for them, and older users give up.</p>
+      <div class="stat" style="margin-top:44px;max-width:640px"><b>~95%</b><span>of the top million home pages fail basic accessibility checks</span></div>
+    </div>
+    <img class="boil" src="../assets/ink-puzzled.webp" width="1400" height="1014" alt="An older man in headphones, puzzled at his laptop.">
+  </div>
+  <p class="src">Source: WebAIM Million, 2024–25.</p>
+  <span class="crit" aria-hidden="true">business value</span>
+</section>
+
+<!-- 3 -->
+<section class="slide" aria-label="3 of 13: What it costs">
+  <div class="meta"><b>Iris.</b><span>What it costs</span><span>03 / 13</span></div>
+  <div class="body">
+    <h2>An app that wasn't built for you <i>costs 260 hours a year.</i></h2>
+    <div class="stats">
+      <div class="stat"><b>€4,000</b><span>and 260 hours a year per person, in sighted help and lost time (our estimate)</span></div>
+      <div class="stat"><b>338 M</b><span>people blind or with moderate to severe vision loss</span></div>
+      <div class="stat"><b>$411 bn</b><span>productivity lost to vision impairment every year</span></div>
+      <div class="stat"><b>1 in 6</b><span>people will be over 60 by 2030, the second audience</span></div>
+    </div>
+  </div>
+  <p class="src">Estimate: 4 h a week of sighted help + 1 h lost, at €15/h, plus missed online prices. Sources: Bourne et al., Lancet Global Health 2021, GBD 2019 (43 M blind + 295 M); Marques et al., eClinicalMedicine 2021; WHO.</p>
+  <span class="crit" aria-hidden="true">business value</span>
+</section>
+
+<!-- 4 -->
+<section class="slide" aria-label="4 of 13: The solution">
+  <div class="meta"><b>Iris.</b><span>The solution</span><span>04 / 13</span></div>
+  <div class="body split" style="grid-template-columns: .9fr 1.1fr; align-items: start; height: auto">
+    <div>
+      <h2 style="font-size:96px">Say it. <i>Iris does it,</i> and asks first.</h2>
+      <p class="lead">You say what you want in plain words. Iris does it in any app on your PC, tells you what happened, and waits for your spoken yes before anything that sends, pays or deletes.</p>
+    </div>
+    <ol class="talk">
+      <li><span class="who">You</span><span class="said">Put vitamin D in my basket.</span></li>
+      <li><span class="who">Iris</span><span class="said">Done. One bottle of vitamin D3 is in your basket.</span></li>
+      <li><span class="who">You</span><span class="said">Now check out.</span></li>
+      <li class="ask"><span class="who">Iris</span><span class="said">Check out and pay for your basket? It costs €32.86.</span></li>
+      <li><span class="who">You</span><span class="said">No, wait.</span></li>
+      <li><span class="who">Iris</span><span class="said">Okay. I didn't buy anything.</span></li>
+    </ol>
+  </div>
+  <p class="src">A real run on amazon.it, retold in short.</p>
+  <span class="crit" aria-hidden="true">presentation</span>
+</section>
+
+<!-- 5 -->
+<section class="slide" aria-label="5 of 13: Any app">
+  <div class="meta"><b>Iris.</b><span>Application agnostic</span><span>05 / 13</span></div>
+  <div class="body">
+    <h2 style="max-width:18ch">Screen readers wait for developers. <i>Iris doesn't.</i></h2>
+    <table class="t" style="margin-top:50px">
+      <thead><tr><th>Layer</th><th>Used when</th><th>Needs the app's developer?</th></tr></thead>
+      <tbody>
+        <tr><td>1 · An API</td><td>The service has one: Gmail through MCP, web pages through browser shortcuts</td><td class="no">No</td></tr>
+        <tr><td>2 · The tree</td><td>Kev reads the controls Windows already sees, in about 230 ms</td><td class="no">No</td></tr>
+        <tr><td>3 · The pixels</td><td>Unlabelled icons and custom-drawn apps: Claude looks at the screen like a sighted helper</td><td class="no">No</td></tr>
+      </tbody>
+    </table>
+    <p class="lead" style="max-width:none">Proof: Telegram Desktop (unlabelled send button), Amazon (checkout), Gmail (API). <b style="color:var(--ink)">10 of 10</b> unlabelled icons found.</p>
+  </div>
+  <span class="crit" aria-hidden="true">originality</span>
+</section>
+
+<!-- 6 -->
+<section class="slide" aria-label="6 of 13: The demo">
+  <div class="meta"><b>Iris.</b><span>The demo</span><span>06 / 13</span></div>
+  <div class="body">
+    <h2>Three errands, <i>real services.</i></h2>
+    <table class="t" style="margin-top:50px">
+      <thead><tr><th>Errand</th><th>What you hear</th><th>What it proves</th></tr></thead>
+      <tbody>
+        <tr><td>Gmail</td><td>“Did Peter write?” It reads the email, writes your reply, asks “Send it to Peter?”, and asks again when you sound unsure</td><td>API first, spoken yes</td></tr>
+        <tr><td>Telegram</td><td>“Tell Peter I'm running late.” The send button has no label; vision finds it</td><td>Works where screen readers stop</td></tr>
+        <tr><td>Amazon</td><td>Fills the basket, names the price, and “No, wait” means nothing is bought</td><td>Money needs a clear yes</td></tr>
+      </tbody>
+    </table>
+    <p class="lead" style="max-width:none">Every clip is a real, continuous take on test accounts; sped-up clips are marked 2×. Video and live page: whom-m0rty.github.io/Iris-voice-agent</p>
+  </div>
+  <span class="crit" aria-hidden="true">originality</span>
+</section>
+
+<!-- 7 -->
+<section class="slide" aria-label="7 of 13: Built on AssemblyAI">
+  <div class="meta"><b>Iris.</b><span>Built on AssemblyAI</span><span>07 / 13</span></div>
+  <div class="body">
+    <h2>Both AssemblyAI paths, <i>one agent.</i></h2>
+    <div class="cols" style="grid-template-columns: 1fr 1fr 1fr; margin-top: 50px">
+      <div class="col"><span class="tag">Realtime STT · the demo</span><h3>Universal-Streaming</h3>
+        <ul><li>Speech-to-text over WebSocket, formatted turns</li><li>Pauses merged into one turn: older people pause mid-sentence (0.8–4 s, set by voice)</li><li>Speech-start events let you talk over Iris</li><li>Bring our own brain (Claude) and neural TTS</li></ul></div>
+      <div class="col"><span class="tag">Voice Agent API</span><h3>One connection</h3>
+        <ul><li>Speech, turn-taking and voice in one WebSocket</li><li>JSON-Schema tools: do_task, answer_confirmation, stop_task, mute_microphone</li><li>Tools answer at once; progress spoken with reply.create</li><li>Runs as a second backend</li></ul></div>
+      <div class="col"><span class="tag">LLM Gateway</span><h3>Swappable brain</h3>
+        <ul><li>Claude through AssemblyAI's gateway in the stored agent</li><li>Any of the 47 gateway models as the brain, one line in .env</li><li>Qwen tested: 0.85 s per plan</li></ul></div>
+    </div>
+  </div>
+  <span class="crit" aria-hidden="true">application of technology</span>
+</section>
+
+<!-- 8 -->
+<section class="slide" aria-label="8 of 13: How it works">
+  <div class="meta"><b>Iris.</b><span>How it works</span><span>08 / 13</span></div>
+  <div class="body">
+    <h2>Each model does <i>what it's best at.</i></h2>
+    <div class="flow">
+      <div class="node aai"><span class="hand">ears</span><h3>AssemblyAI</h3><p>Universal-Streaming turns speech into text as you talk.</p><span class="ms">streaming</span></div>
+      <div class="node"><span class="hand">brain</span><h3>Claude</h3><p>One JSON decision per turn: what to say, which tool.</p><span class="ms">~2.5 s per turn</span></div>
+      <div class="node"><span class="hand">hands</span><h3>Kev, local</h3><p>Open-weights decision model picks each control from the tree.</p><span class="ms">234 ms</span></div>
+      <div class="node"><span class="hand">eyes</span><h3>Claude vision</h3><p>Only when the tree is empty: looks, then snaps to the real control.</p><span class="ms">3.2 s</span></div>
+      <div class="node"><span class="hand">guard</span><h3>Your yes</h3><p>Word list + Kev decide what is risky; your exact words decide yes.</p><span class="ms">129 ms</span></div>
+    </div>
+    <p class="lead" style="max-width:none">The fast part does almost all the work. The slow part steps in only when it has to. Kev, vision and yes/no latencies: bench/bench_full.py on an RTX 5060 Ti. Brain turn time seen in live runs.</p>
+  </div>
+  <span class="crit" aria-hidden="true">application of technology</span>
+</section>
+
+<!-- 9 -->
+<section class="slide" aria-label="9 of 13: Safety">
+  <div class="meta"><b>Iris.</b><span>Why you can trust it</span><span>09 / 13</span></div>
+  <div class="body">
+    <h2>It never acts <i>on a maybe.</i></h2>
+    <div class="stats">
+      <div class="stat"><b>0</b><span>false yeses in 60 spoken answers</span></div>
+      <div class="stat"><b>0</b><span>risky actions let through, in 40 it had never seen</span></div>
+      <div class="stat"><b>92%</b><span>controls picked right by Kev in 25 test steps; misses went to vision, not to a wrong click</span></div>
+      <div class="stat"><b>10/10</b><span>unlabelled icons found by Claude vision</span></div>
+    </div>
+    <p class="lead" style="max-width:none;margin-top:56px">Passwords never reach a model: code types them from Windows Credential Manager. Apps on the do-not-touch list are never read or clicked. Muted, a pending question can only end as a no.</p>
+  </div>
+  <p class="src">Measured with bench/bench_full.py on our own test sets, 26.09.2026.</p>
+  <span class="crit" aria-hidden="true">application of technology</span>
+</section>
+
+<!-- 10 -->
+<section class="slide" aria-label="10 of 13: Behaviours">
+  <div class="meta"><b>Iris.</b><span>Made for people who can't see the screen</span><span>10 / 13</span></div>
+  <div class="body">
+    <h2 style="max-width:20ch">Small behaviours <i>that change the day.</i></h2>
+    <div class="grid6">
+      <div class="cell"><div class="say">“What's on my screen?”</div><p>Where you are, pop-ups first, three things that matter. Photos described by vision.</p></div>
+      <div class="cell"><div class="say">“I'm lost.”</div><p>Says where you are and what box is open. Never closes it without asking.</p></div>
+      <div class="cell"><div class="say">“Show me how.”</div><p>Does the task slowly, explaining each step in plain words. It teaches as it goes.</p></div>
+      <div class="cell"><div class="say">“Say that again.”</div><p>Repeats the last reply word for word, at once.</p></div>
+      <div class="cell"><div class="say">“Wait longer for me.”</div><p>Pause length set by voice, remembered next time.</p></div>
+      <div class="cell"><div class="say">tick · chime · low tone</div><p>Sounds for thinking, done and error. Silence never leaves you guessing.</p></div>
+    </div>
+  </div>
+  <span class="crit" aria-hidden="true">originality</span>
+</section>
+
+<!-- 11 -->
+<section class="slide" aria-label="11 of 13: Who pays">
+  <div class="meta"><b>Iris.</b><span>Who pays</span><span>11 / 13</span></div>
+  <div class="body">
+    <div style="display:grid;grid-template-columns:1.3fr .7fr;gap:40px;align-items:end">
+      <h2 style="max-width:17ch">Free for the person. <i>Paid by who carries the cost today.</i></h2>
+      <img class="boil" src="../assets/ink-family.webp" width="1400" height="1066" alt="An older father talks to his computer in headphones while his daughter watches, relaxed." style="max-height:330px;width:auto;justify-self:end">
+    </div>
+    <div class="payers">
+      <div class="payer"><div class="n">1</div><h3>Families</h3><p>“Mum calls me every day to fix her email.” Remote setup, a daily log, alerts when she's stuck.</p><p class="price">€9–12 / month</p></div>
+      <div class="payer"><div class="n">2</div><h3>Assistive-tech funders</h3><p>Rehab agencies, Access to Work, blind associations: budgets exist for approved tools.</p><p class="price">€150–400 / seat / year</p></div>
+      <div class="payer"><div class="n">3</div><h3>Employers</h3><p>Internal apps that will never be made accessible become usable, with audit log and do-not-touch list.</p><p class="price">€20–40 / seat / month</p></div>
+      <div class="payer"><div class="n">4</div><h3>Banks and telcos</h3><p>Older customers call support for what the app could do. Connect an API; every call avoided is saved cost.</p><p class="price">per active user or task</p></div>
+    </div>
+  </div>
+  <p class="src">Prices are our estimates for discussion.</p>
+  <span class="crit" aria-hidden="true">business value</span>
+</section>
+
+<!-- 12 -->
+<section class="slide" aria-label="12 of 13: Why now and the plan">
+  <div class="meta"><b>Iris.</b><span>Why now, and the next twelve months</span><span>12 / 13</span></div>
+  <div class="body split" style="grid-template-columns: 1fr 1.1fr; align-items:start">
+    <div>
+      <h2 style="font-size:92px">Law, age and cost <i>all point one way.</i></h2>
+      <div class="cols" style="grid-template-columns:1fr; margin-top:40px">
+        <div class="col" style="padding-top:18px"><p><b style="color:var(--ink)">The law.</b> The European Accessibility Act has applied since 28 June 2025 to banking, shopping and telecom.</p>
+        <p><b style="color:var(--ink)">Age.</b> 1 in 6 people over 60 by 2030 (WHO).</p>
+        <p><b style="color:var(--ink)">Cost.</b> Voice AI is now fast and cheap enough to do the task itself, where the alternative is a sighted helper's hour.</p></div>
+      </div>
+    </div>
+    <table class="t" style="margin-top:14px">
+      <thead><tr><th>When</th><th>Move</th><th>Proof</th></tr></thead>
+      <tbody>
+        <tr><td>Q1</td><td>Free beta with two blind associations and 20 families</td><td>Tasks done without help</td></tr>
+        <tr><td>Q2</td><td>Family plan, case studies</td><td>Month-two retention</td></tr>
+        <tr><td>Q3</td><td>One funder's approved list; first employer pilot</td><td>First funded seats</td></tr>
+        <tr><td>Q4</td><td>Bank or telco pilot: bills and balances through their API</td><td>Support calls avoided</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <span class="crit" aria-hidden="true">business value</span>
+</section>
+
+<!-- 13 -->
+<section class="slide close" aria-label="13 of 13: Close">
+  <div class="meta"><b>Iris.</b><span>team revived</span><span>13 / 13</span></div>
+  <h2>A computer is easy when it <i>listens to you.</i></h2>
+  <p class="links">whom-m0rty.github.io/Iris-voice-agent · github.com/Whom-m0rty/Iris-voice-agent</p>
+  <img class="lineup boil" src="../assets/lineup.webp" width="2000" height="742" alt="Nine people drawn in ink: the people Iris is for.">
+</section>
+
+</main>
+
+<div class="hud" role="group" aria-label="Slide controls">
+  <button type="button" id="prev" aria-label="Previous slide">←</button>
+  <span id="count" aria-live="polite">1 / 13</span>
+  <button type="button" id="next" aria-label="Next slide">→</button>
+</div>
+
+<script>
+(function () {
+  var deck = document.getElementById("deck");
+  var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
+  var i = Math.max(0, Math.min(slides.length - 1, (parseInt(location.hash.slice(1), 10) || 1) - 1));
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    deck.style.transform = "scale(" + s + ") translate(-50%, -50%)";
+    deck.style.left = "50%"; deck.style.top = "50%";
+    deck.style.transform = "translate(-50%, -50%) scale(" + s + ")";
+    deck.style.transformOrigin = "50% 50%";
+  }
+  function show(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach(function (s, k) { s.classList.toggle("on", k === i); });
+    document.getElementById("count").textContent = (i + 1) + " / " + slides.length;
+    history.replaceState(null, "", "#" + (i + 1));
+  }
+  document.addEventListener("keydown", function (e) {
+    if (["ArrowRight", "PageDown", " "].indexOf(e.key) >= 0) { e.preventDefault(); show(i + 1); }
+    if (["ArrowLeft", "PageUp"].indexOf(e.key) >= 0) { e.preventDefault(); show(i - 1); }
+    if (e.key === "Home") show(0);
+    if (e.key === "End") show(slides.length - 1);
+  });
+  document.getElementById("next").onclick = function () { show(i + 1); };
+  document.getElementById("prev").onclick = function () { show(i - 1); };
+  window.addEventListener("resize", fit);
+  fit(); show(i);
+  if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    var noise = document.getElementById("boil-noise"), seed = 1;
+    setInterval(function () { seed = seed % 3 + 1; noise.setAttribute("seed", seed); }, 125);
+  }
+})();
+</script>
+</body>
+</html>

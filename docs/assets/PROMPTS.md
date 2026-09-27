@@ -70,3 +70,20 @@ pure white background: a blind man in a flat cap and long coat walking with a wh
 dog walking beside him on a harness, side view, a calm walk cycle in place (they do not travel
 across the frame), full bodies, small in the centre. Frame-by-frame hand-drawn animation look with
 subtle line boil, static camera, no background, no text, black ink only, seamless loop.
+
+## 8. ink-puzzled.png (slides: the problem)
+
+Pen-and-ink editorial illustration, loose confident black ink lines with light cross-hatching:
+an older man with glasses sits at a laptop on a kitchen table, wearing over-ear headphones, one
+hand hovering uncertainly over the keyboard, eyebrows raised, clearly puzzled. Three small empty
+speech bubbles float out of the laptop speaker. Full figure and table in frame, generous white
+margin. Pure black ink only, no grey wash, no color. Background: pure white #FFFFFF. No text.
+
+## 9. ink-family.png (slides: who pays)
+
+Pen-and-ink editorial illustration, loose confident black ink lines with light cross-hatching:
+an elderly father sits at his desktop computer wearing over-ear headphones, talking to it and
+smiling; his adult daughter stands behind him, relaxed, one hand on his shoulder, holding a cup
+of coffee, watching him do it himself. Warm, dignified, not pitiful. Full figures in frame,
+generous white margin. Pure black ink only, no grey wash, no color. Background: pure white
+#FFFFFF. No text.
