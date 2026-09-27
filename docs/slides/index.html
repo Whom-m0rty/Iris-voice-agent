@@ -215,11 +215,12 @@
       <thead><tr><th>Layer</th><th>Used when</th><th>Needs the app's developer?</th></tr></thead>
       <tbody>
         <tr><td>1 · An API</td><td>The service has one: Gmail through MCP, web pages through browser shortcuts</td><td class="no">No</td></tr>
-        <tr><td>2 · The tree</td><td>Kev reads the controls Windows already sees, in about 230 ms</td><td class="no">No</td></tr>
-        <tr><td>3 · The pixels</td><td>Unlabelled icons and custom-drawn apps: Claude looks at the screen like a sighted helper</td><td class="no">No</td></tr>
+        <tr><td>2 · The tree</td><td>Jev (or Kev on your own GPU) picks from the controls Windows already sees</td><td class="no">No</td></tr>
+        <tr><td>3 · The keyboard</td><td>Enter sends, Escape closes, Alt+Left goes back</td><td class="no">No</td></tr>
+        <tr><td>4 · The pixels</td><td>With Claude: unlabelled icons and custom-drawn apps, seen like a sighted helper would</td><td class="no">No</td></tr>
       </tbody>
     </table>
-    <p class="lead" style="max-width:none">Proof: Telegram Desktop (unlabelled send button), Amazon (checkout), Gmail (API). <b style="color:var(--ink)">10 of 10</b> unlabelled icons found.</p>
+    <p class="lead" style="max-width:none">Proof: Telegram, Amazon, Gmail. <b style="color:var(--ink)">10 of 10</b> unlabelled icons found with Claude vision.</p>
   </div>
   <span class="crit" aria-hidden="true">originality</span>
 </section>
@@ -233,7 +234,7 @@
       <thead><tr><th>Errand</th><th>What you hear</th><th>What it proves</th></tr></thead>
       <tbody>
         <tr><td>Gmail</td><td>“Did Peter write?” It reads the email, writes your reply, asks “Send it to Peter?”, and asks again when you sound unsure</td><td>API first, spoken yes</td></tr>
-        <tr><td>Telegram</td><td>“Tell Peter I'm running late.” The send button has no label; vision finds it</td><td>Works where screen readers stop</td></tr>
+        <tr><td>Telegram</td><td>“Tell Peter I'm running late.” The send button has no label; Iris still sends it</td><td>Works where screen readers stop</td></tr>
         <tr><td>Amazon</td><td>Fills the basket, names the price, and “No, wait” means nothing is bought</td><td>Money needs a clear yes</td></tr>
       </tbody>
     </table>
@@ -249,11 +250,11 @@
     <h2>Both AssemblyAI paths, <i>one agent.</i></h2>
     <div class="cols" style="grid-template-columns: 1fr 1fr 1fr; margin-top: 50px">
       <div class="col"><span class="tag">Realtime STT · the demo</span><h3>Universal-Streaming</h3>
-        <ul><li>Speech-to-text over WebSocket, formatted turns</li><li>Pauses merged into one turn: older people pause mid-sentence (0.8–4 s, set by voice)</li><li>Speech-start events let you talk over Iris</li><li>Bring our own brain (Claude) and neural TTS</li></ul></div>
+        <ul><li>Speech-to-text over WebSocket, formatted turns</li><li>Pauses merged into one turn: older people pause mid-sentence (0.8–4 s, set by voice)</li><li>Speech-start events let you talk over Iris</li><li>Our own brain (Qwen, or Claude) and neural TTS</li></ul></div>
       <div class="col"><span class="tag">Voice Agent API</span><h3>One connection</h3>
         <ul><li>Speech, turn-taking and voice in one WebSocket</li><li>JSON-Schema tools: do_task, answer_confirmation, stop_task, mute_microphone</li><li>Tools answer at once; progress spoken with reply.create</li><li>Runs as a second backend</li></ul></div>
-      <div class="col"><span class="tag">LLM Gateway</span><h3>Swappable brain</h3>
-        <ul><li>Claude through AssemblyAI's gateway in the stored agent</li><li>Any of the 47 gateway models as the brain, one line in .env</li><li>Qwen tested: 0.85 s per plan</li></ul></div>
+      <div class="col"><span class="tag">LLM Gateway</span><h3>The brain</h3>
+        <ul><li>Qwen 3.5 4B by default: about 0.8 s per plan</li><li>Through Iris Cloud, our server on Oracle Ampere: it holds the keys, so your PC needs none</li><li>Any of the 47 gateway models, or Claude, with one line in .env</li></ul></div>
     </div>
   </div>
   <span class="crit" aria-hidden="true">application of technology</span>
@@ -266,12 +267,12 @@
     <h2>Each model does <i>what it's best at.</i></h2>
     <div class="flow">
       <div class="node aai"><span class="hand">ears</span><h3>AssemblyAI</h3><p>Universal-Streaming turns speech into text as you talk.</p><span class="ms">streaming</span></div>
-      <div class="node"><span class="hand">brain</span><h3>Claude</h3><p>One JSON decision per turn: what to say, which tool.</p><span class="ms">~2.5 s per turn</span></div>
-      <div class="node"><span class="hand">hands</span><h3>Kev, local</h3><p>Open-weights decision model picks each control from the tree.</p><span class="ms">234 ms</span></div>
-      <div class="node"><span class="hand">eyes</span><h3>Claude vision</h3><p>Only when the tree is empty: looks, then snaps to the real control.</p><span class="ms">3.2 s</span></div>
+      <div class="node aai"><span class="hand">brain</span><h3>Qwen 3.5 4B</h3><p>On AssemblyAI's LLM Gateway, through Iris Cloud. One JSON plan per turn.</p><span class="ms">0.8 s per plan</span></div>
+      <div class="node"><span class="hand">hands</span><h3>Jev, or Kev</h3><p>A decision model picks each control: Jev in the cloud, or Kev on your GPU.</p><span class="ms">Kev: 234 ms</span></div>
+      <div class="node"><span class="hand">eyes</span><h3>Claude vision</h3><p>Only if you bring Claude, and only when the tree is empty.</p><span class="ms">3.2 s</span></div>
       <div class="node"><span class="hand">guard</span><h3>Your yes</h3><p>Word list + Kev decide what is risky; your exact words decide yes.</p><span class="ms">129 ms</span></div>
     </div>
-    <p class="lead" style="max-width:none">The fast part does almost all the work. The slow part steps in only when it has to. Kev, vision and yes/no latencies: bench/bench_full.py on an RTX 5060 Ti. Brain turn time seen in live runs.</p>
+    <p class="lead" style="max-width:none">Iris Cloud, our small server on Oracle Ampere, holds the keys: no keys and no GPU on your PC. Audio goes straight to AssemblyAI. Latencies: Qwen from the end-to-end runs (27.09); Kev, vision and yes/no from bench/bench_full.py.</p>
   </div>
   <span class="crit" aria-hidden="true">application of technology</span>
 </section>
@@ -299,7 +300,7 @@
   <div class="body">
     <h2 style="max-width:20ch">Small behaviours <i>that change the day.</i></h2>
     <div class="grid6">
-      <div class="cell"><div class="say">“What's on my screen?”</div><p>Where you are, pop-ups first, three things that matter. Photos described by vision.</p></div>
+      <div class="cell"><div class="say">“What's on my screen?”</div><p>Where you are, pop-ups first, three things that matter. Photos described, with Claude.</p></div>
       <div class="cell"><div class="say">“I'm lost.”</div><p>Says where you are and what box is open. Never closes it without asking.</p></div>
       <div class="cell"><div class="say">“Show me how.”</div><p>Does the task slowly, explaining each step in plain words. It teaches as it goes.</p></div>
       <div class="cell"><div class="say">“Say that again.”</div><p>Repeats the last reply word for word, at once.</p></div>
