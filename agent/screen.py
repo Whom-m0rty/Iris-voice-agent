@@ -3,6 +3,7 @@ import base64
 import io
 import os
 import re
+import time
 from dataclasses import dataclass
 
 import uiautomation as auto
@@ -387,6 +388,11 @@ def click(el: Element) -> None:
     c.Click(simulateMove=False, waitTime=0)
 
 
+# Windows 11 Notepad (and other apps with typing suggestions) drops or repeats characters
+# typed faster than this: "I am running late" came out as "I am eeeeeeeeeeee" with no pause
+TYPE_DELAY = float(os.environ.get("TYPE_DELAY_MS", "80")) / 1000
+
+
 def type_secret(el: Element, value: str) -> None:
     """Fill a password field from the vault. Keystrokes only: the value never goes
     through ValuePattern, logs or any model."""
@@ -394,13 +400,26 @@ def type_secret(el: Element, value: str) -> None:
     guard_foreground()
     for ch in value:              # char by char: no SendKeys escape syntax to get wrong
         auto.SendUnicodeChar(ch)
+        time.sleep(TYPE_DELAY)
 
 
 def type_keys(text: str) -> None:
-    """Type like a person, one character at a time (any language, no SendKeys escapes)."""
+    """Put text where the keyboard focus is: pasted (instant and exact), the user's clipboard
+    restored after; key by key when the clipboard is busy. Short texts (a keypad's digits)
+    are typed, since some keypads ignore a paste."""
     guard_foreground()
+    if len(text) > 3:
+        import clipboard
+        saved = clipboard.get_text()
+        if clipboard.set_text(text):
+            auto.SendKeys("{Ctrl}v", waitTime=0)
+            time.sleep(0.25)                          # the app reads the clipboard after the key
+            if saved is not None:
+                clipboard.set_text(saved, private=False)
+            return
     for ch in text:
         auto.SendUnicodeChar(ch)
+        time.sleep(TYPE_DELAY)
 
 
 def type_text(el: Element, text: str) -> None:
@@ -420,6 +439,7 @@ def type_text(el: Element, text: str) -> None:
             pass
     el.ctrl.Click(simulateMove=False, waitTime=0)
     send_keys("{Ctrl}a", waitTime=0)              # replace whatever the field held
+    time.sleep(0.15)                              # let Ctrl go up, or the first letters become shortcuts
     type_keys(text)
 
 

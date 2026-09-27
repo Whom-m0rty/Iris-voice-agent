@@ -41,6 +41,8 @@ ALWAYS_CONFIRM = re.compile(
 MONEY_INTENT = re.compile(r"\b(checkout|check out|buy|pay\b|place (your )?order|purchase)", re.I)
 SEND_INTENT = re.compile(r"\b(send|post|submit|reply|отправ)", re.I)
 
+BUTTON_STEP = re.compile(r"\b(button|icon|send|submit|search|play|pause)\b", re.I)
+
 SCROLL_STEP = re.compile(r"^\s*scroll\b(?P<rest>.*)$", re.I)
 
 PASSWORD_WORDS = re.compile(r"pass(word|code|phrase)|\bpin\b|парол|пин-?код", re.I)
@@ -99,6 +101,19 @@ def with_text(item: dict) -> dict:
     if m and not re.search(r"\b(into|in the|box|field)\b", item["do"], re.I):
         return {**item, "text": m.group("text").strip()}
     return item
+
+
+# Without vision (the default cloud mode) a step whose button has no label can often be done
+# with a key: (step words, keys, what it does, needs the text field focused, browser only)
+KEY_STEPS = [
+    (re.compile(r"\b(send|submit|post|reply)\b", re.I), "{Enter}", "pressed Enter to send", True, False),
+    (re.compile(r"\b(search|find|look ?up|go button|start the search)\b", re.I), "{Enter}",
+     "pressed Enter to search", True, False),
+    (re.compile(r"\b(close|cancel|dismiss|not now|no thanks)\b", re.I), "{Esc}", "pressed Escape to close it", False, False),
+    (re.compile(r"\b(go back|back button|previous page)\b", re.I), "{Alt}{Left}", "went back a page", False, True),
+    (re.compile(r"\bnext (field|box|input)\b", re.I), "{Tab}", "moved to the next field", False, False),
+    (re.compile(r"\b(play|pause|resume)\b", re.I), "k", "pressed play/pause", False, True),
+]
 
 
 ZOOM_GOAL = ("This image is a zoomed-in crop of the screen around the target. Point precisely at the "
@@ -336,23 +351,33 @@ class Agent:
             if (pending_text or pending_secret) and len(criteria) == 2:  # one field + BLOCKED: nothing to decide
                 key, conf = next(iter(criteria)), 1.0
             el = snap.elements.get(key)
+            if (el is not None and el.typeable and not (pending_text or pending_secret)
+                    and BUTTON_STEP.search(goal)):
+                el = None                     # "click the Send button" landed on the text box: no such button
             if el is None or conf < MIN_PROB or not el.name:
                 if steps and not (pending_text or pending_secret) and answers["done"]["noul"] >= 0.5:
                     # leaning "done" and no convincing next step: finished
                     return Result(True, f"Done: {goal}.", steps)
-                step = self._vision_step(window, goal, text if pending_text else None,
-                                         secret if pending_secret else None, ms,
-                                         why=f"kev={key} conf={conf:.2f}")
+                if isinstance(self.vision, vision.NoVision):
+                    step = None if (pending_text or pending_secret) else \
+                        self._keyboard_step(window, goal, why=f"kev={key} conf={conf:.2f}")
+                else:
+                    step = self._vision_step(window, goal, text if pending_text else None,
+                                             secret if pending_secret else None, ms,
+                                             why=f"kev={key} conf={conf:.2f}")
                 if step is None:
                     if self._declined:
                         declined, self._declined = self._declined, None
                         return Result(False, f"Cancelled: I did not {declined}.", steps)
                     if self.cancel.is_set():
                         return Result(False, "Stopped because you asked.", steps)
+                    blind = (" That control has no label, and I can only find those by looking at the "
+                             "screen, which needs Claude (IRIS_BRAIN=claude-code or anthropic).") \
+                        if isinstance(self.vision, vision.NoVision) else ""
                     if steps:
                         return Result(False, f"I did: {history}, but I cannot confirm the rest "
-                                             "on this screen.", steps)
-                    return Result(False, "I could not find a way to do that on this screen.", steps)
+                                             f"on this screen.{blind}", steps)
+                    return Result(False, f"I could not find a way to do that on this screen.{blind}", steps)
                 if step.action == "done":
                     return Result(True, f"Done: {goal}.", steps)
                 if step.action == "scrolled":
@@ -407,6 +432,51 @@ class Agent:
             self._record(steps, Step("kev", action, el.label, ms))
             screen.wait_for_change(window, snap.state())
         return Result(False, "I stopped after too many steps.", steps)
+
+    def _focus_field(self, window) -> bool:
+        """Put the keyboard focus in the field that holds what we typed (or the only text
+        field), so Enter goes to it and not to some button."""
+        try:
+            f = screen.auto.GetFocusedControl()
+            if (f and f.ControlTypeName in ("EditControl", "DocumentControl")
+                    and f.GetTopLevelControl().NativeWindowHandle == window.NativeWindowHandle):
+                return True
+        except Exception:
+            pass
+        fields = [e for e in screen.snapshot(window).elements.values()
+                  if e.typeable and not e.password and not e.offscreen]
+        typed = (self._typed or "").strip()[:20]
+        holding = [e for e in fields if typed and typed in screen._text_of(e.ctrl)]
+        pick = holding[0] if holding else fields[0] if len(fields) == 1 else None
+        if pick is None:
+            return False
+        pick.ctrl.Click(simulateMove=False, waitTime=0)
+        time.sleep(0.15)
+        return True
+
+    def _keyboard_step(self, window, goal, why) -> Step | None:
+        """No vision: do the step with a key when there is an obvious one (Enter sends a chat
+        message or starts a search, Escape closes a pop-up...). Risky keys ask first, as clicks do."""
+        for words, keys, what, needs_field, browser_only in KEY_STEPS:
+            if not words.search(goal) or (browser_only and not screen.is_browser(window)):
+                continue
+            if keys == "k" and "youtube" not in (window.Name or "").lower():
+                continue                      # K is play/pause on YouTube only
+            if not screen.bring_to_front(window):
+                return None
+            if needs_field and not self._focus_field(window):
+                continue
+            description = f"{what.replace('pressed ', 'press ').replace('went', 'go').replace('moved', 'move')}"
+            if self._risky(goal) or ALWAYS_CONFIRM.search(goal):
+                if not self._approved(description):
+                    self._declined = description
+                    return None
+            if self.cancel.is_set():
+                return None
+            screen.send_keys(keys, waitTime=0)
+            time.sleep(0.5)
+            return Step("keys", what, keys.strip("{}"), 0, why)
+        return None
 
     def _vision_step(self, window, goal, text, secret, kev_ms, why) -> Step | None:
         self.say("Looking at the screen.")
