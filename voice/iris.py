@@ -43,6 +43,7 @@ import websockets
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "agent"))
 import env  # noqa: E402,F401  (loads ../.env)
+import apps  # noqa: E402
 import browser  # noqa: E402
 import screen  # noqa: E402
 import vault  # noqa: E402
@@ -65,7 +66,7 @@ TICK = _chime((1320,), note_ms=28, volume=2600)            # soft, once a second
 DONE = _chime((784, 988, 1175), note_ms=80, volume=6000)   # rising: the action is done
 ERROR = _chime((262, 196), note_ms=160, volume=7000)       # low, falling: something went wrong
 TICK_AFTER_S = 0.7                              # no tick for answers faster than this
-ACTION_TOOLS = {"do_task", "browser_search", "browser_open", "browser_back", "switch_to"}
+ACTION_TOOLS = {"do_task", "browser_search", "browser_open", "browser_back", "switch_to", "open_app"}
 FAILED = re.compile(r"^(ERROR|Something went wrong|Stopped at|No browser|I could not|.* is not open on the screen)", re.I)
 # the whole turn must be the request: "pardon me, open my email" is a request, not a repeat
 REPEAT = re.compile(r"^\W*((sorry|excuse me|pardon|what)\W+)?(say (that|it) again|repeat( that| it| again)*|"
@@ -126,7 +127,7 @@ Tools:
 - do_task(goal, window, steps): act on the screen when no direct tool fits. window = one of the
   open windows below. steps = small single actions [{"do": "..."}], for typing add "text", for a
   stored password add "secret": "<login name>" (never put a password in text).
-  The app is already open: never add a step to open it. Name the control: "press the digit 7",
+  The app must already be open (open_app first if it is not): never add a step to open it. Name the control: "press the digit 7",
   "click the Reply button", "type the message into the message box". A typing step always
   carries "text". To send, the last
   step is "click the Send button" - never press Enter. Keypads: one key per step.
@@ -144,6 +145,9 @@ Tools:
   here?"; "pictures" for "what's in the photo?" (question = what they want to know);
   "lost" for "I'm lost" / "what happened?". window may be empty: the one in front.
 - switch_to(window): bring one of the open windows to the front ("go back to my email").
+- open_app(name): start a program by name ("Telegram", "calculator", "the browser", "Word"),
+  or bring it to the front if it is already open. Use it whenever the app the user needs is
+  not in the open windows below, then continue with do_task in its window.
 - set_pause(seconds): how long you wait before deciding the user finished speaking (now
   {PAUSE} s, allowed 0.8 to 4). Raise it by about 1 s when they say you cut them off or they need
   more time; lower it when they say you are slow to answer.
@@ -478,7 +482,7 @@ class Iris:
         if name == "mute_microphone":
             self.set_muted(True, "voice")
             return "muted; the user unmutes by holding Control and Alt and pressing M"
-        if name in ("describe_screen", "switch_to", "set_pause"):
+        if name in ("describe_screen", "switch_to", "set_pause", "open_app"):
             return self.run_access(name, args)
         if name not in self.bridge.tools:
             return f"unknown tool {name}"
@@ -533,6 +537,8 @@ class Iris:
                 self.prefs["pause_s"] = self.merge_s
                 save_prefs(self.prefs)
                 result = f"I now wait {self.merge_s:g} seconds of silence before I answer."
+            elif name == "open_app":
+                result = apps.open_app(args.get("name") or args.get("app") or "")
             else:
                 name_arg = (args.get("window") or "").strip()
                 window = screen.resolve_window(name_arg, 1) if name_arg else screen.foreground()
