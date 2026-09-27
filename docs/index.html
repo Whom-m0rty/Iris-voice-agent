@@ -161,6 +161,10 @@
   .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
   .demo-note { margin: 26px 0 0; font-size: 16px; color: var(--soft); max-width: 60ch; }
   .demo-note b { color: var(--ink); }
+  .demo-video { margin: 56px 0 0; }
+  .demo-video iframe { display: block; width: 100%; aspect-ratio: 16 / 9; height: auto; border: 0;
+                       border-radius: 14px; background: var(--ink); }
+  .demo-video .demo-note { margin-top: 14px; }
 
   /* ---------- how it works ---------- */
   .how { padding: 70px 0 110px; }
@@ -305,11 +309,13 @@
             <li><span class="who">Iris</span><span class="said">Okay. I didn't buy anything.</span></li>
           </ol>
           <p class="after">The green line is Iris asking first. A “no” ends the task: it doesn't look for another way.</p>
-          <div class="actions"><a class="btn" href="#install">Install on Windows</a><a class="btn line" href="https://github.com/Whom-m0rty/Iris-voice-agent">Source on GitHub</a></div>
+          <div class="actions"><a class="btn" href="#demo">Watch the demo</a><a class="btn line" href="#install">Install on Windows</a></div>
         </article>
       </div>
-      <!-- VIDEO: once recorded, replace this paragraph with the YouTube iframe (16:9) -->
-      <p class="demo-note" id="demo"><b>The demo video arrives with the submission on 30 September.</b> It shows this errand, a Gmail reply and a Telegram message, start to finish.</p>
+      <figure class="demo-video" id="demo">
+        <iframe src="https://www.youtube-nocookie.com/embed/F8FQbnk3HoM?rel=0" title="Iris: the voice agent for people who can't see the screen (demo video)" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+        <figcaption class="demo-note"><b>The demo, one real take.</b> This errand on Amazon, start to finish. <a href="https://youtu.be/F8FQbnk3HoM">Watch on YouTube</a></figcaption>
+      </figure>
     </div>
   </section>
 
