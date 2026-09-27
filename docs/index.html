@@ -175,6 +175,7 @@
   .part h3 { font: 400 32px/1.05 var(--serif); margin: 6px 0 10px; }
   .part p { margin: 0; font-size: 16px; color: var(--soft); }
   .swapline { margin: 34px 0 0; font-size: 16px; color: var(--soft); max-width: 70ch; }
+  .how .small { margin: 18px 0 0; font-size: 15px; color: var(--soft); max-width: 70ch; }
   .swapline code { font-family: var(--mono); font-size: .9em; background: var(--card); padding: 1px 6px; border-radius: 4px; color: var(--ink); }
 
   /* ---------- trust ---------- */
@@ -201,6 +202,15 @@
   @media (min-width: 860px) { .need { grid-template-columns: 1fr 1fr; } }
   .need p { margin: 0; font-size: 17px; color: var(--soft); max-width: 60ch; }
   .need b { color: var(--ink); }
+  .cmd { position: relative; margin-top: 10px; }
+  .cmd pre { margin: 0; padding-right: 96px; }
+  .copy { position: absolute; top: 8px; right: 8px; min-height: 36px; padding: 0 14px; border: 2px solid var(--ink); border-radius: 999px;
+          background: var(--paper); color: var(--ink); font: 600 14px/1 var(--text); cursor: pointer; }
+  .copy:hover { background: var(--ink); color: var(--paper); }
+  .copy.done { background: var(--green); border-color: var(--green); color: #fff; }
+  @media (max-width: 720px) { .cmd pre { padding-right: 16px; padding-bottom: 56px; } .copy { top: auto; bottom: 8px; } }
+  .more { margin: 30px 0 0; font-size: 16px; color: var(--soft); max-width: 70ch; }
+  .more b { color: var(--ink); }
 
   /* ---------- closing ---------- */
   .close { position: relative; height: 200vh; }
@@ -309,11 +319,11 @@
       <p class="sub">The fast part does almost all the work; the slow part steps in only when it has to. Iris draws its work on the screen, so a sighted helper can follow along.</p>
       <div class="parts">
         <div class="part"><span class="tag" aria-hidden="true">ears</span><h3>AssemblyAI</h3><p>Streaming speech-to-text. Short pauses merge into one turn, because people, older people especially, pause mid-sentence.</p></div>
-        <div class="part"><span class="tag" aria-hidden="true">brain</span><h3>Claude</h3><p>Turns what you said into small steps and picks the tool: an API when one exists, the screen when it doesn't. Results are read from the screen, never guessed.</p></div>
-        <div class="part"><span class="tag" aria-hidden="true">hands</span><h3>Kev, then vision</h3><p>Kev, an open-weights model on your GPU, picks each button from the accessibility tree in about 230 ms. Where the tree has nothing, Claude looks at the pixels.</p></div>
+        <div class="part"><span class="tag" aria-hidden="true">brain</span><h3>Qwen, or Claude</h3><p>Turns what you said into small steps and picks the tool: an API when one exists, the screen when it doesn't. Out of the box it's Qwen on the AssemblyAI LLM Gateway; bring Claude if you have it. Results are read from the screen, never guessed.</p></div>
+        <div class="part"><span class="tag" aria-hidden="true">hands</span><h3>Jev, or Kev</h3><p>Jev by TypeSafe picks each button from the accessibility tree; with an NVIDIA GPU, its open-weights sibling Kev does it locally in about 230 ms. It opens apps by name and uses the keyboard: Enter sends, Escape closes. With Claude, it also looks at the screen to find buttons nobody labelled.</p></div>
         <div class="part"><span class="tag" aria-hidden="true">guard</span><h3>Your spoken yes</h3><p>Anything that sends, pays, deletes or shares waits for a yes, judged on your exact words. “Uh… who is it for?” gets the question again.</p></div>
       </div>
-      <p class="swapline">Every part is one line in <code>.env</code>: AssemblyAI streaming or the Voice Agent API for the ears, Claude or any model on the AssemblyAI LLM Gateway for the brain, Kev on your GPU or Jev in the cloud for the decisions.</p>
+      <p class="swapline">The brain is one line in <code>.env</code>: <code>IRIS_BRAIN=cloud</code> (the default, no keys), <code>claude-code</code> (your Claude Code login), <code>anthropic</code> (your API key; Claude also becomes the eyes) or <code>gateway</code> (your AssemblyAI key, any Gateway model). Without Claude, Iris has no vision: it works from the accessibility tree and the keyboard.</p>
       <p class="small">Our end-to-end runs show the whole loop works on real Gmail, Telegram and Amazon, so you can try it on your own PC. They are not a promise of production reliability: it depends mostly on the brain. With Claude, 5 of 5 Amazon runs ended safely; a small 4B model on the Gateway answers 3&times; faster but got 1 of 13 right. Details in <code>bench/results/</code>.</p>
     </div>
   </section>
@@ -322,7 +332,7 @@
     <div class="wrap">
       <img class="stamp boil" src="assets/ink-key.webp" width="401" height="420" alt="" loading="lazy">
       <h2 id="trust-t">Why you can trust it</h2>
-      <p class="body">In 60 spoken answers it heard <b>0 false yeses</b>. In 40 actions it had never seen, it let <b>0 risky ones</b> through without asking. It clicked <b>10 of 10</b> unlabelled icons, and it decides in <b>230 ms</b> on your own GPU. <em>Passwords never reach a model:</em> code types them from Windows Credential Manager. <em>Apps you list, it never touches.</em></p>
+      <p class="body">In 60 spoken answers it heard <b>0 false yeses</b>. In 40 actions it had never seen, it let <b>0 risky ones</b> through without asking. With Claude as its eyes, it clicked <b>10 of 10</b> unlabelled icons; with Kev on your own GPU, it decides in <b>230 ms</b>. <em>Passwords never reach a model:</em> code types them from Windows Credential Manager. <em>Apps you list, it never touches.</em> <em>Iris Cloud counts, it doesn't listen:</em> your speech goes straight to AssemblyAI, and the server never stores what you say or what's on your screen.</p>
       <p class="small">Measured with the benchmarks in <code>bench/</code> on our own test sets. Numbers from September 2026.</p>
       <div class="sign" aria-hidden="true">team revived<small>lablab.ai × AssemblyAI Voice Agent Hackathon</small></div>
     </div>
@@ -331,18 +341,16 @@
   <section class="install" id="install" aria-labelledby="install-t">
     <div class="wrap">
       <h2 id="install-t">Install it <i>once.</i></h2>
-      <p class="sub">Iris is a Windows program: it works on your screen, in your apps. Setup takes about 15 minutes, most of it a one-time download of the local model.</p>
+      <p class="sub">Iris is a Windows program: it works on your screen, in your apps. One line installs it, in about 2 minutes. No keys, no GPU, no git.</p>
       <div class="need">
-        <p><b>You need</b> Windows 10 or 11, an NVIDIA GPU with about 10 GB free (for Kev), a microphone and headphones, a free <a href="https://www.assemblyai.com/dashboard/signup">AssemblyAI key</a>, and Claude (a Claude Code login or an Anthropic API key).</p>
-        <p><b>Who sets it up</b> Someone comfortable with a terminal, once. After that, the person using Iris only needs their voice.</p>
+        <p><b>You need</b> Windows 10 or 11, a microphone and headphones. That's all: speech, brain and decisions run through Iris Cloud, our small server that keeps the keys.</p>
+        <p><b>What the server sees</b> Each PC gets an anonymous token and a daily allowance. The server stores counters only, never your speech or your screen.</p>
       </div>
       <ol class="steps">
-        <li><div>Get the code.<pre tabindex="0"><code>git clone https://github.com/Whom-m0rty/Iris-voice-agent
-cd Iris-voice-agent</code></pre></div></li>
-        <li><div>Install. This downloads Kev and the Python packages, then asks for your keys.<pre tabindex="0"><code>powershell -ExecutionPolicy Bypass -File install.ps1</code></pre></div></li>
-        <li><div>Optional: connect Gmail, and list apps Iris must never touch in <code>protected_apps.txt</code>.<pre tabindex="0"><code>python voice\mcp_servers\mail.py login</code></pre></div></li>
-        <li><div>Start it, put on headphones, and talk. Try “What's the newest file in my Downloads folder?”<pre tabindex="0"><code>powershell -ExecutionPolicy Bypass -File run_demo.ps1</code></pre></div></li>
+        <li><div>Open PowerShell, paste this line and press Enter. It downloads Iris, installs it and puts an <b>Iris</b> shortcut on your desktop.<div class="cmd"><pre tabindex="0"><code id="one-line">irm https://raw.githubusercontent.com/Whom-m0rty/Iris-voice-agent/main/bootstrap.ps1 | iex</code></pre><button class="copy" type="button" data-copy="one-line" hidden>Copy</button></div></div></li>
+        <li><div>Start Iris, put on headphones, and talk. Try “Open the calculator”, “Open Telegram” or “What's on my screen?”</div></li>
       </ol>
+      <p class="more"><b>Want more?</b> Set <code>IRIS_BRAIN=claude-code</code>, <code>anthropic</code> or <code>gateway</code> in <code>.env</code> (or install with <code>install.ps1 -Brain claude-code</code>) to use your own Claude or AssemblyAI key; <code>install.ps1 -Local</code> runs Kev on your own NVIDIA GPU. Details in the <a href="https://github.com/Whom-m0rty/Iris-voice-agent#run">README</a>.</p>
     </div>
   </section>
 
@@ -360,12 +368,24 @@ cd Iris-voice-agent</code></pre></div></li>
 <div class="wrap">
   <footer>
     <div><b>Iris.</b><a href="#intro">Intro</a> · <a href="#errand">The errand</a> · <a href="#how">How it works</a> · <a href="#install">Install</a></div>
-    <p>Built for the lablab.ai × AssemblyAI Voice Agent Hackathon, September 2026. MIT license. Speech by <a href="https://www.assemblyai.com">AssemblyAI</a>, decisions by <a href="https://github.com/jaredpalmer/kev">Kev</a>, planning and vision by Claude. Images made with Gemini. Body text is set in Atkinson Hyperlegible, a typeface the Braille Institute designed for readers with low vision.</p>
+    <p>Built for the lablab.ai × AssemblyAI Voice Agent Hackathon, September 2026. MIT license. Speech and the default brain (Qwen on the LLM Gateway) by <a href="https://www.assemblyai.com">AssemblyAI</a>, decisions by Jev from TypeSafe or <a href="https://github.com/jaredpalmer/kev">Kev</a>, planning and vision by Claude when you bring it. Images made with Gemini. Body text is set in Atkinson Hyperlegible, a typeface the Braille Institute designed for readers with low vision.</p>
     <p class="r"><a href="https://github.com/Whom-m0rty/Iris-voice-agent">Source on GitHub</a></p>
   </footer>
 </div>
 
 <script>
+// copy buttons: shown only when the clipboard is available
+Array.prototype.forEach.call(document.querySelectorAll(".copy"), function (b) {
+  if (!navigator.clipboard) return;
+  b.hidden = false;
+  b.addEventListener("click", function () {
+    var text = document.getElementById(b.dataset.copy).textContent;
+    navigator.clipboard.writeText(text).then(function () {
+      b.textContent = "Copied"; b.classList.add("done");
+      setTimeout(function () { b.textContent = "Copy"; b.classList.remove("done"); }, 1800);
+    });
+  });
+});
 (function () {
   var root = document.documentElement;
   var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
