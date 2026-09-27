@@ -113,6 +113,17 @@ class ClaudeAPI:
         return _parse(r.content[0].text), (time.perf_counter() - t) * 1000
 
 
+class NoVision:
+    """No Claude configured (the default cloud mode): the screen agent works from the
+    accessibility tree and the keyboard, and says so when it would need to look."""
+
+    def warm(self):
+        pass
+
+    def ask(self, png_b64: str, goal: str):
+        raise RuntimeError("vision is off: set IRIS_BRAIN=claude-code or anthropic to let Iris look at the screen")
+
+
 _shared = None
 
 
@@ -120,5 +131,7 @@ def backend():
     """One shared backend per process, so the warm `claude -p` session is reused across tasks."""
     global _shared
     if _shared is None:
-        _shared = ClaudeAPI() if os.environ.get("VISION_BACKEND") == "api" else ClaudeCLI()
+        import cloud
+        mode = cloud.vision_mode()
+        _shared = ClaudeAPI() if mode == "api" else ClaudeCLI() if mode == "cli" else NoVision()
     return _shared

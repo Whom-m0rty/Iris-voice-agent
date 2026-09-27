@@ -16,3 +16,4 @@ protected_apps.txt
 iris_prefs.json
 docs/assets/src/
 bench/results/raw_reliability/
+server/.env.server

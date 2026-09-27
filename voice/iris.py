@@ -44,6 +44,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "agent"))
 import env  # noqa: E402,F401  (loads ../.env)
 import apps  # noqa: E402
+import cloud  # noqa: E402
 import browser  # noqa: E402
 import screen  # noqa: E402
 import vault  # noqa: E402
@@ -264,11 +265,16 @@ class APIBrain:
 
 
 def make_brain(prompt: str):
-    backend = os.environ.get("BRAIN_BACKEND", "cli")
-    if backend == "openai":                   # any OpenAI-compatible endpoint, AssemblyAI LLM Gateway by default
-        from brains import OpenAICompatibleBrain
-        return OpenAICompatibleBrain(prompt)
-    return APIBrain(prompt) if backend == "api" else Brain(prompt)
+    """IRIS_BRAIN in .env: cloud (default), claude-code, anthropic, gateway, openai (cloud.py)."""
+    mode = cloud.brain_mode()
+    if mode == "claude-code":
+        return Brain(prompt)
+    if mode == "anthropic":
+        return APIBrain(prompt)
+    from brains import OpenAICompatibleBrain
+    if mode == "cloud":
+        return OpenAICompatibleBrain(prompt, base=f"{cloud.CLOUD_URL}/v1", key=cloud.device_token())
+    return OpenAICompatibleBrain(prompt)       # gateway / openai: BRAIN_BASE_URL, BRAIN_API_KEY
 
 
 class Voice:
@@ -673,10 +679,13 @@ class Iris:
     # ---- ears: AssemblyAI streaming STT ------------------------------------------------
 
     async def listen(self):
-        key = os.environ["ASSEMBLYAI_API_KEY"]
+        key = os.environ.get("ASSEMBLYAI_API_KEY", "")
+        # no key of your own: a short-lived token from Iris Cloud, audio still goes straight to AssemblyAI
+        url, headers = (STT_URL, {"Authorization": key}) if key else \
+            (f"{STT_URL}&token={cloud.stt_token()}", {})
         loop = asyncio.get_running_loop()
         audio_q: asyncio.Queue[bytes] = asyncio.Queue()
-        async with websockets.connect(STT_URL, additional_headers={"Authorization": key}) as ws:
+        async with websockets.connect(url, additional_headers=headers) as ws:
             self.emit({"kind": "ready"})
 
             async def pump():

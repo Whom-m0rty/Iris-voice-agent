@@ -106,18 +106,40 @@ is replaced.
 
 ## Run
 
-Windows 10/11, Python 3.12+, an NVIDIA GPU with ~10 GB free for Kev.
+Windows 10/11 and a microphone. No keys and no GPU needed. In PowerShell:
 
-1. `git clone https://github.com/jaredpalmer/kev` into `kev/`, then `uv sync --extra serve`
-   and install a CUDA build of torch into `kev/.venv`.
-2. `.env` in the repo root: `ASSEMBLYAI_API_KEY=...`; for vision either
-   `CLAUDE_CODE_OAUTH_TOKEN=...` (local `claude -p`, personal use) or `VISION_BACKEND=api` with
-   `ANTHROPIC_API_KEY=...`.
-3. Optional, for the Voice Agent API backend: `python voice/setup_agent.py` — creates the
-   AssemblyAI agent with Claude as its LLM.
-4. Optional Gmail: put the Google OAuth client as `client_secret.json`, set `MAIL_ADDRESS`,
-   run `python voice/mcp_servers/mail.py login`.
-5. `run_demo.ps1` — starts Kev, the cursor overlay, the observer panel and the voice session.
+```powershell
+irm https://raw.githubusercontent.com/Whom-m0rty/Iris-voice-agent/main/bootstrap.ps1 | iex
+```
+
+This downloads Iris to `%LOCALAPPDATA%\Iris\app`, installs it (about 2 minutes) and puts an
+**Iris** shortcut on the desktop. Start it, put on headphones, wait for "Hi, I'm Iris", and talk:
+"Open the calculator", "What's on my screen?", "Find a video on how to bake bread".
+
+### Pick the brain: one line in `.env`
+
+| `IRIS_BRAIN=` | What runs | You need |
+|---|---|---|
+| `cloud` (default) | Qwen on the AssemblyAI LLM Gateway, Jev decisions, AssemblyAI speech, all through **Iris Cloud**. No vision: Iris works from the accessibility tree and the keyboard | nothing |
+| `claude-code` | Claude as the brain and the eyes, through your Claude Code login (`claude -p`, personal use) | Claude Code |
+| `anthropic` | Claude as the brain and the eyes, through the Anthropic API | `ANTHROPIC_API_KEY` |
+| `gateway` | any LLM Gateway model your AssemblyAI plan includes (`BRAIN_MODEL=`) | `ASSEMBLYAI_API_KEY` |
+
+Or at install time: `install.ps1 -Brain claude-code`. Decisions: `IRIS_DECISIONS=auto` uses Kev
+when it runs locally (`install.ps1 -Local`, NVIDIA GPU with ~10 GB), else Jev through Iris
+Cloud; `jev` with your own `JEV_KEY`. Details in `agent/cloud.py`.
+
+**Iris Cloud** (`server/`, FastAPI behind Caddy) keeps our keys on the server. Each PC gets an
+anonymous token and a daily allowance (40 voice sessions, 600 brain calls, 3000 decisions).
+Your speech goes straight to AssemblyAI with a short-lived token; the server stores counters,
+never what you say or what is on your screen. Deploy your own with `server/deploy.sh`.
+
+### From source
+
+`git clone` this repo, then `powershell -ExecutionPolicy Bypass -File install.ps1` (same
+options) and `run_demo.ps1`. Optional: Gmail over MCP (put the Google OAuth client as
+`client_secret.json`, set `MAIL_ADDRESS`, run `python voice/mcp_servers/mail.py login`); the
+Voice Agent API backend (`python voice/setup_agent.py`, then `voice/client.py`).
 
 ## License
 

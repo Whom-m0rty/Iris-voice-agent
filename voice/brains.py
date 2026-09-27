@@ -56,9 +56,9 @@ def normalize_tool(tool) -> dict | None:
 class OpenAICompatibleBrain:
     """Keeps the conversation itself (the endpoint is stateless) and trims it to the last turns."""
 
-    def __init__(self, prompt: str):
-        self.base = os.environ.get("BRAIN_BASE_URL", GATEWAY).rstrip("/")
-        self.key = os.environ.get("BRAIN_API_KEY") or os.environ.get("ASSEMBLYAI_API_KEY", "")
+    def __init__(self, prompt: str, base: str | None = None, key: str | None = None):
+        self.base = (base or os.environ.get("BRAIN_BASE_URL", GATEWAY)).rstrip("/")
+        self.key = key or os.environ.get("BRAIN_API_KEY") or os.environ.get("ASSEMBLYAI_API_KEY", "")
         self.model = os.environ.get("BRAIN_MODEL", "qwen3.5-4b-32k-fast")
         self.prompt = prompt
         self.history: list[dict] = []

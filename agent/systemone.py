@@ -6,17 +6,27 @@ import os
 import time
 import urllib.request
 
-URL = os.environ.get("SYSTEMONE_URL", "http://127.0.0.1:8009").rstrip("/") + "/v1/systemone"
-KEY = os.environ.get("SYSTEMONE_KEY", "")
-MODEL = os.environ.get("SYSTEMONE_MODEL", "kev-latest")
+import cloud
+
+_target: tuple[str, str, str] | None = None
+
+
+def target() -> tuple[str, str, str]:
+    """(url, key, model), chosen once: local Kev, Jev, or Iris Cloud (see cloud.py)."""
+    global _target
+    if _target is None:
+        base, key, model = cloud.decisions()
+        _target = (base.rstrip("/") + "/v1/systemone", key, model)
+    return _target
 
 
 def ask(state: str, questions: dict) -> tuple[dict, float]:
     """Returns (answers, wall_ms)."""
-    body = json.dumps({"state": state, "model": MODEL, "questions": questions}).encode()
-    req = urllib.request.Request(URL, body, {"Content-Type": "application/json"})
-    if KEY:
-        req.add_header("Authorization", f"Bearer {KEY}")
+    url, key, model = target()
+    body = json.dumps({"state": state, "model": model, "questions": questions}).encode()
+    req = urllib.request.Request(url, body, {"Content-Type": "application/json"})
+    if key:
+        req.add_header("Authorization", f"Bearer {key}")
     t = time.perf_counter()
     with urllib.request.urlopen(req, timeout=60) as r:
         out = json.load(r)
