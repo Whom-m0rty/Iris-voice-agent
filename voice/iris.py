@@ -355,10 +355,15 @@ class Iris:
     def _prompt(self) -> str:
         tools = "\n".join(f"- {t['name']}({', '.join((t['parameters'].get('properties') or {}).keys())}): "
                           f"{t['description']}" for t in self.bridge.voice_tools())
-        return (BRAIN_PROMPT.replace("{TOOLS}", tools or "(no direct tools)")
-                .replace("{SECRETS}", ", ".join(vault.names()) or "none")
-                .replace("{WINDOWS}", "; ".join(screen.open_windows()[:15]))
-                .replace("{PAUSE}", f"{self.merge_s:.1f}"))
+        prompt = (BRAIN_PROMPT.replace("{TOOLS}", tools or "(no direct tools)")
+                  .replace("{SECRETS}", ", ".join(vault.names()) or "none")
+                  .replace("{WINDOWS}", "; ".join(screen.open_windows()[:15]))
+                  .replace("{PAUSE}", f"{self.merge_s:.1f}"))
+        if os.environ.get("IRIS_BRIEF") == "1":        # demo recordings: short answers
+            prompt += ("\n- Keep every \"say\" to ONE short sentence, at most 10 words. While a tool "
+                       "runs, say nothing or two or three words (\"On it.\"). No greetings, no offers of "
+                       "more help, no repeating what the user said.")
+        return prompt
 
     # ---- mute -------------------------------------------------------------------------
 
