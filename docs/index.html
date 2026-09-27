@@ -23,7 +23,8 @@
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
-  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; }
+    .mic, .float { animation: none !important; } .boil { filter: none; } }
   body { margin: 0; color: var(--ink); font: 19px/1.6 var(--text); overflow-x: clip;
          background-color: var(--paper);
          background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
@@ -41,6 +42,44 @@
   /* handwritten margin notes: the reference's chess notation, here the notation of Iris */
   .note { position: absolute; font: 30px/1 var(--hand); color: var(--green); pointer-events: none; white-space: nowrap; }
   @media (max-width: 720px) { .note { display: none; } }
+
+  /* ---------- loader: an ink character listening, notes arriving around it ---------- */
+  .loader { display: none; }
+  .js .loader { display: grid; position: fixed; inset: 0; z-index: 100; place-items: center; background-color: var(--paper);
+                background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+                background-size: 88px 88px; background-position: center top; transition: opacity .7s ease, visibility 0s linear .7s; }
+  .loaded .loader { opacity: 0; visibility: hidden; }
+  .loader__stage { position: relative; width: 300px; height: 300px; display: grid; place-items: center; }
+  .loader__who { width: 150px; height: auto; aspect-ratio: 232 / 360; object-fit: contain; }
+  .loader__note { position: absolute; font: 30px/1 var(--hand); color: var(--green); opacity: 0; animation: note 2.6s ease-out forwards; }
+  .loader__note:nth-child(2) { left: 8px; top: 40px; animation-delay: .25s; }
+  .loader__note:nth-child(3) { right: 0; top: 70px; animation-delay: .6s; color: var(--soft); }
+  .loader__note:nth-child(4) { left: 20px; bottom: 50px; animation-delay: .95s; color: var(--soft); }
+  .loader__note:nth-child(5) { right: 16px; bottom: 30px; animation-delay: 1.3s; }
+  .loader__note:nth-child(6) { left: 50%; top: 0; translate: -50% 0; animation-delay: 1.65s; color: var(--ink); }
+  @keyframes note { 0% { opacity: 0; transform: translateY(6px); } 35% { opacity: 1; transform: none; } 100% { opacity: .75; } }
+
+  /* entrance, once the loader lifts: the mic sharpens out of a blur, then the letters rise */
+  .js:not(.loaded) .mic { opacity: 0; filter: blur(18px) drop-shadow(0 26px 30px rgba(0,0,0,0)); scale: 1.08; }
+  .js .mic { transition: opacity .9s ease-out .15s, filter 1.2s cubic-bezier(.16,1,.3,1) .15s, scale 1.2s cubic-bezier(.16,1,.3,1) .15s; }
+  .js:not(.loaded) .title span { opacity: 0; transform: translateY(24%); }
+  .js .title span { transition: opacity .8s ease-out, transform 1s cubic-bezier(.16,1,.3,1); }
+  .js .title span:nth-child(1) { transition-delay: .55s; } .js .title span:nth-child(2) { transition-delay: .63s; }
+  .js .title span:nth-child(3) { transition-delay: .71s; } .js .title span:nth-child(4) { transition-delay: .79s; }
+  .js:not(.loaded) .hero .over, .js:not(.loaded) .hero .by, .js:not(.loaded) .hero-cta, .js:not(.loaded) .proof,
+  .js:not(.loaded) .cue, .js:not(.loaded) .bar, .js:not(.loaded) .hero .note, .js:not(.loaded) .walker { opacity: 0; }
+  .js .hero .over, .js .hero .by, .js .hero-cta, .js .proof, .js .cue, .js .bar, .js .hero .note, .js .walker { transition: opacity .8s ease-out 1.05s; }
+  .js:not(.loaded) .hero .float { opacity: 0; }
+  .js .hero .float { transition: opacity 1s ease-out 1.2s; }
+
+  /* idle life: the mic sways a little, keycaps bob, ink lines boil */
+  .mic { transform-origin: 50% 90%; animation: sway 7s ease-in-out infinite alternate; }
+  @keyframes sway { from { rotate: -1.2deg; } to { rotate: 1.4deg; } }
+  .float { animation: bob 5.5s ease-in-out infinite alternate; }
+  .float:nth-of-type(2n) { animation-duration: 6.8s; animation-delay: -2s; }
+  @keyframes bob { from { translate: 0 -8px; } to { translate: 0 10px; } }
+  .boil { filter: url(#boil); }
+  video.walker, .loader__who { mix-blend-mode: multiply; }
 
   /* ---------- top bar ---------- */
   .bar { position: relative; z-index: 5; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
@@ -62,7 +101,7 @@
            display: flex; gap: .02em; user-select: none; }
   .title span { display: block; }
   .mic { position: absolute; z-index: 2; left: 50%; top: 50%; width: clamp(78px, 15vw, 250px);
-         transform: translate(-46%, -52%); filter: drop-shadow(0 26px 30px rgba(0,0,0,.28)); will-change: transform; }
+         transform: translate(-46%, -52%); filter: blur(0px) drop-shadow(0 26px 30px rgba(0,0,0,.28)); will-change: transform; }
   .walker { position: absolute; z-index: 2; left: 16%; bottom: 4%; width: clamp(46px, 5vw, 76px); }
   @media (max-width: 720px) { .walker { left: 2%; bottom: -30%; width: 40px; } .hero .over { font-size: 20px; }
     .title { font-size: 56vw; } .mic { width: 25vw; } .hero { min-height: 88svh; } .walker { display: none; } }
@@ -179,6 +218,22 @@
 <body>
 <script>document.documentElement.classList.add("js")</script>
 <a class="skip" href="#main">Skip to the content</a>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <filter id="boil" x="-5%" y="-5%" width="110%" height="110%">
+    <feTurbulence id="boil-noise" type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="1"/>
+    <feDisplacementMap in="SourceGraphic" scale="2.6"/>
+  </filter>
+</svg>
+<div class="loader" id="loader" aria-hidden="true">
+  <div class="loader__stage">
+    <video class="loader__who" src="assets/loader.mp4" poster="assets/ink-grandma.webp" autoplay muted loop playsinline preload="auto"></video>
+    <span class="loader__note">“yes?”</span>
+    <span class="loader__note">Nf3</span>
+    <span class="loader__note">230 ms</span>
+    <span class="loader__note">Ctrl+Alt+M</span>
+    <span class="loader__note">listening…</span>
+  </div>
+</div>
 
 <div class="wrap">
   <header class="bar">
@@ -195,7 +250,8 @@
       <div class="stage">
         <h1 id="hero-t" class="title" aria-label="Iris"><span>I</span><span>R</span><span>I</span><span>S</span></h1>
         <img class="mic" id="mic" src="assets/hero-mic.webp" width="848" height="1400" alt="" fetchpriority="high">
-        <img class="walker" src="assets/ink-cane.webp" width="275" height="420" alt="">
+        <!-- to animate: replace with <video class="walker" src="assets/walker.mp4" poster="assets/ink-cane.webp" autoplay muted loop playsinline aria-hidden="true"> (prompt 7 in assets/PROMPTS.md) -->
+        <img class="walker boil" src="assets/ink-cane.webp" width="275" height="420" alt="">
         <span class="note" style="left:4%;top:8%" aria-hidden="true">“yes?”</span>
         <span class="note" style="right:5%;top:18%" aria-hidden="true">230 ms</span>
         <span class="note" style="right:12%;bottom:2%" aria-hidden="true">Ctrl+Alt+M</span>
@@ -214,7 +270,7 @@
     <div class="pin">
       <div class="wrap">
         <div class="dateline" aria-hidden="true"><b>Iris.</b><span>A voice agent for Windows</span><span>Built in September 2026</span></div>
-        <p class="prose reveal" id="manifesto">Computers were built for people who can see them <img class="pic" src="assets/ink-eye.webp" alt="">. A screen reader reads what apps label, and when they don't, all you hear is “button, button, button.” <span class="g">Iris listens instead</span> <img class="pic" src="assets/ink-headphones.webp" alt="">. Ask “did my grandson write?” <img class="pic wide" src="assets/ink-envelope.webp" alt=""> and it reads you the letter. Say “order more vitamins” <img class="pic" src="assets/ink-basket.webp" alt=""> and it fills the basket, names the price, and waits. <span class="g">Nothing that sends, pays or deletes happens until you say yes</span> <img class="pic" src="assets/ink-speech.webp" alt="">.</p>
+        <p class="prose reveal" id="manifesto">Computers were built for people who can see them <img class="pic boil" src="assets/ink-eye.webp" alt="">. A screen reader reads what apps label, and when they don't, all you hear is “button, button, button.” <span class="g">Iris listens instead</span> <img class="pic boil" src="assets/ink-headphones.webp" alt="">. Ask “did my grandson write?” <img class="pic wide boil" src="assets/ink-envelope.webp" alt=""> and it reads you the letter. Say “order more vitamins” <img class="pic boil" src="assets/ink-basket.webp" alt=""> and it fills the basket, names the price, and waits. <span class="g">Nothing that sends, pays or deletes happens until you say yes</span> <img class="pic boil" src="assets/ink-speech.webp" alt="">.</p>
       </div>
     </div>
     <img class="float" data-speed="0.5" data-rot="22" style="right:6%;top:30%;width:clamp(70px,8vw,130px)" src="assets/key-n.webp" alt="">
@@ -263,7 +319,7 @@
 
   <section class="trust" id="trust" aria-labelledby="trust-t">
     <div class="wrap">
-      <img class="stamp" src="assets/ink-key.webp" width="401" height="420" alt="" loading="lazy">
+      <img class="stamp boil" src="assets/ink-key.webp" width="401" height="420" alt="" loading="lazy">
       <h2 id="trust-t">Why you can trust it</h2>
       <p class="body">In 60 spoken answers it heard <b>0 false yeses</b>. In 40 actions it had never seen, it let <b>0 risky ones</b> through without asking. It clicked <b>10 of 10</b> unlabelled icons, and it decides in <b>230 ms</b> on your own GPU. <em>Passwords never reach a model:</em> code types them from Windows Credential Manager. <em>Apps you list, it never touches.</em></p>
       <p class="small">Measured with the benchmarks in <code>bench/</code> on our own test sets. Numbers from September 2026.</p>
@@ -295,7 +351,7 @@ cd Iris-voice-agent</code></pre></div></li>
         <h2 class="prose reveal" id="close-t">A computer is easy when it <span class="g">listens to you.</span></h2>
         <div class="cta"><a class="btn" href="#install">Install on Windows</a><a class="btn line" href="https://github.com/Whom-m0rty/Iris-voice-agent">GitHub</a></div>
       </div>
-      <img class="lineup" id="lineup" src="assets/lineup.webp" width="2000" height="742" alt="Nine people drawn in ink: an older woman with a cane, a blind man with a guide dog, a grandfather in headphones, a woman in a wheelchair with a laptop, a waving grandson, a woman reading a letter, a man with a hearing aid, a small girl, and a nurse." loading="lazy">
+      <img class="lineup boil" id="lineup" src="assets/lineup.webp" width="2000" height="742" alt="Nine people drawn in ink: an older woman with a cane, a blind man with a guide dog, a grandfather in headphones, a woman in a wheelchair with a laptop, a waving grandson, a woman reading a letter, a man with a hearing aid, a small girl, and a nurse." loading="lazy">
     </div>
   </section>
 </main>
@@ -310,8 +366,23 @@ cd Iris-voice-agent</code></pre></div></li>
 
 <script>
 (function () {
+  var root = document.documentElement;
   var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (still) { document.documentElement.classList.remove("js"); return; }
+  if (still) { root.classList.remove("js"); root.classList.add("loaded"); return; }
+
+  // loader: at least 2.2 s the first time in a session, 0.6 s after that; never longer than 5 s
+  var seen = false;
+  try { seen = sessionStorage.getItem("iris-seen") === "1"; sessionStorage.setItem("iris-seen", "1"); } catch (e) {}
+  var minWait = new Promise(function (r) { setTimeout(r, seen ? 600 : 2200); });
+  var loaded = new Promise(function (r) { if (document.readyState === "complete") r(); else window.addEventListener("load", r); });
+  var fonts = document.fonts ? document.fonts.ready : Promise.resolve();
+  var lift = function () { root.classList.add("loaded"); };
+  Promise.all([minWait, loaded, fonts]).then(lift);
+  setTimeout(lift, 5000);
+
+  // line boil: redraw the ink with a new noise seed about 8 times a second
+  var noise = document.getElementById("boil-noise"), seed = 1;
+  setInterval(function () { seed = seed % 3 + 1; noise.setAttribute("seed", seed); }, 125);
 
   // split each .reveal block into words; images stay as they are
   function split(el) {

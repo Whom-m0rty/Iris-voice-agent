@@ -53,3 +53,20 @@ table, a pair of over-ear headphones resting next to it, reading glasses folded 
 note, a cup of tea, soft window light from the left, shallow depth of field, film grain,
 quiet and warm. The laptop screen is softly out of focus. No people, no readable text, no
 logos. Landscape 3:2.
+
+## 6. loader.mp4 (loading screen character, Gemini video / Veo)
+
+Hand-drawn black ink line animation, loose pen-and-ink style with light cross-hatching, on a plain
+pure white background: a friendly elderly woman with round glasses and a knitted cardigan, wearing
+big over-ear headphones, standing, full body, small in the centre of the frame. She listens, gently
+nods and smiles, then lifts one hand a little as if saying "yes". Frame-by-frame hand-drawn
+animation look with subtle line boil, static camera, no background, no floor line, no text, black
+ink only, the last frame matches the first so it loops.
+
+## 7. walker.mp4 (hero figure beside the title, Gemini video / Veo)
+
+Hand-drawn black ink line animation, loose pen-and-ink style with light cross-hatching, on a plain
+pure white background: a blind man in a flat cap and long coat walking with a white cane, a guide
+dog walking beside him on a harness, side view, a calm walk cycle in place (they do not travel
+across the frame), full bodies, small in the centre. Frame-by-frame hand-drawn animation look with
+subtle line boil, static camera, no background, no text, black ink only, seamless loop.
