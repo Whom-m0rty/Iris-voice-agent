@@ -1,73 +1,99 @@
 # Iris — a voice agent that operates Windows for people who can't use the screen
 
-Built for the lablab.ai × AssemblyAI Voice Agent Hackathon (September 2026). Work in progress.
+Built for the lablab.ai × AssemblyAI Voice Agent Hackathon (September 2026).
+**Site:** https://whom-m0rty.github.io/Iris-voice-agent/ · **Deck:** [slides](https://whom-m0rty.github.io/Iris-voice-agent/slides/) ([PDF](https://whom-m0rty.github.io/Iris-voice-agent/slides/iris-pitch.pdf))
 
 You say what you want; Iris does it on your PC, tells you what happened, and asks out loud
-before anything that can't be undone. It is meant for blind users — and for anyone who finds
+before anything that can't be undone. It is meant for blind users, and for anyone who finds
 a computer confusing.
 
 **It works where a screen reader gives up.** Screen readers read the accessibility tree; when
-an app doesn't label its buttons, they hear "button, button, button". Iris reads the tree when
-it is there and looks at the pixels when it isn't.
+an app doesn't label its buttons, they hear "button, button, button". Iris needs nothing from
+the app's developer: it uses an API when one exists, otherwise the controls Windows can see
+and the keyboard, and, when you bring Claude, the pixels themselves.
 
 ## How it works
 
+Out of the box (`IRIS_BRAIN=cloud`) your PC needs no keys and no GPU:
+
 ```
-mic ─► AssemblyAI Universal-Streaming (speech-to-text, formatted turns, pause merging)
-          ▼
-       Claude (brain): one JSON decision per turn — what to say, which tool to call
-          │ MCP tools (e.g. Gmail) when an API exists          │ do_task(goal, window, steps)
-          ▼                                                     ▼
-   API first                       Screen agent: Kev (local, ~230 ms) picks each control
-                                   from UI Automation ──(nothing fits)──► Claude vision
-          │
-   Safety gate: word list + Kev ─► spoken "yes" required, judged on the user's exact words
-          ▼
-   neural TTS (sentence by sentence; the user can talk over it)
+ Your PC (Windows)                    Iris Cloud (Oracle Ampere A1)         AssemblyAI
+ ─────────────────                    ─────────────────────────────         ──────────
+ Iris ── asks for a speech token ───► /v1/stt-token (holds the keys)
+  │  ◄───────────── 10-minute token ──┘
+  mic ── audio, straight to AssemblyAI ────────────────────────────────►  Universal-Streaming
+  │  ◄──────────────────────────────── text, as you talk ──────────────────┘
+  │
+  ├─ plan ──────────────────────────► /v1/chat/completions ────────────►  LLM Gateway: Qwen 3.5 4B
+  │  ◄──── one JSON decision per turn: what to say, which tool ◄──────────┘
+  │
+  ├─ API first: MCP tools (Gmail), opening apps, browser shortcuts
+  ├─ the screen: UI Automation; a decision model picks each control
+  │     ──────────────────────────────► /v1/systemone ─────────────────►  Jev (TypeSafe)
+  │     (or Kev on your own GPU, ~230 ms; Claude vision only when Claude is the brain)
+  ├─ the keyboard when nothing fits: Enter sends, Escape closes, Alt+Left goes back
+  │
+  ├─ safety gate: word list + the decision model ─► a spoken "yes", judged on your exact words
+  └─ neural TTS back to you, sentence by sentence (you can talk over it)
 ```
 
-Two voice backends, same agent underneath:
+- **Ears: AssemblyAI Universal-Streaming** (`voice/iris.py`, the main loop, used in the demo).
+  The hackathon's "Realtime Speech-to-Text + your own LLM and TTS" path. Formatted turns;
+  short pauses are merged into one turn, because people (older people especially) pause
+  mid-sentence; how long a pause may be is set by voice (0.8–4 s) and remembered.
+- **Brain: Qwen 3.5 4B on AssemblyAI's LLM Gateway** (`qwen3.5-4b-32k-fast`, ~0.8 s per plan),
+  reached through Iris Cloud. One JSON decision per turn: what to say and which tool to call.
+  Small-model replies are hardened: broken JSON is repaired, empty replies are asked again, rate
+  limits back off. One line in `.env` swaps in Claude or any other Gateway model (below).
+- **Iris Cloud** (`server/app.py`, FastAPI behind Caddy on an Oracle Ampere A1, aarch64) keeps
+  our keys on the server. Each PC gets an anonymous token and a daily allowance; the server
+  hands out short-lived AssemblyAI speech tokens and forwards brain and decision calls. Your
+  audio goes straight to AssemblyAI, and the server stores usage counters, never what you say
+  or what is on your screen. No model runs on it. Deploy your own with `server/deploy.sh`.
+- **Hands, API first**: any MCP server becomes voice tools; the bundled Gmail server uses OAuth,
+  and servers' own `readOnlyHint` / `destructiveHint` feed the safety gate. Iris also opens apps
+  by name and jumps around the web with browser shortcuts.
+- **Hands, on the screen**: UI Automation lists the controls; a System One decision model picks
+  one per planned step: **Jev** (TypeSafe, through Iris Cloud) by default, or
+  [**Kev**](https://github.com/jaredpalmer/kev), open weights, on your own NVIDIA GPU. With no
+  vision, the keyboard covers the rest. With Claude as the brain, **Claude vision** looks at the
+  window when the accessibility tree is not enough.
+- **Second voice backend: the AssemblyAI Voice Agent API** (`voice/client.py`): speech,
+  turn-taking, voice and the LLM in one connection, JSON-Schema client tools (`do_task`,
+  `answer_confirmation`, `stop_task`, `mute_microphone`), Claude through the LLM Gateway in a
+  stored agent. It works, but in our tests the live API sometimes ended a reply with no words
+  and no tool call, so the demo runs on the streaming backend.
 
-- **`voice/iris.py` — main, used in the demo.** AssemblyAI Universal-Streaming STT + Claude +
-  neural TTS: the hackathon's "Realtime Speech-to-Text + your own LLM and TTS" path. Short
-  pauses are merged into one turn, because people (older people especially) pause mid-sentence.
-- **`voice/client.py` — AssemblyAI Voice Agent API.** Speech, turn-taking, voice and the LLM in
-  one connection, client-side tools, Claude through AssemblyAI's LLM Gateway (stored agent).
-  Works, but in our tests the live API sometimes ended a reply with no words and no tool call,
-  so the demo runs on the first backend.
+Around all of it:
 
-Around both:
-
-- **Fast path**: [Kev](https://github.com/jaredpalmer/kev), an open-weights System One decision
-  model (TypeSafe `/v1/systemone` API), runs locally and picks one control per planned step.
-- **Vision fallback**: Claude looks at the window when the accessibility tree is not enough.
-- **API first**: any MCP server becomes voice tools; the bundled Gmail server uses OAuth, and
-  servers' own `readOnlyHint` / `destructiveHint` feed the safety gate.
+- **Asks before acting**: anything that sends, pays, deletes or shares waits for a spoken yes,
+  judged on your exact words; "uh… who is it for?" gets the question again, and a "no" ends the
+  task.
 - **Passwords never reach a model**: stored logins live in Windows Credential Manager and are
   typed by code into fields UI Automation marks as password fields.
+- **Apps it never touches**: list them in `protected_apps.txt`; Iris won't read, type into or
+  click them.
 - **Made for people who cannot see the screen**: a soft tick while Iris thinks, a chime when
   an action is done, a low tone on an error. Ask "what's on my screen?", "what can I do here?",
-  "what's in the photo?" or "I'm lost" (pop-ups are named first, never closed without asking).
-  "Show me how" does a task slowly and explains each step; "say that again" repeats the last
-  reply word for word; "wait longer for me" changes how long a pause may be, and it is
-  remembered. Iris speaks without computer words: "I opened your email", not "focused the tab".
+  "what's in the photo?" (with Claude) or "I'm lost" (pop-ups are named first, never closed
+  without asking). "Show me how" does a task slowly and explains each step; "say that again"
+  repeats the last reply word for word. Iris speaks without computer words: "I opened your
+  email", not "focused the tab".
 - **Mute**: Ctrl+Alt+M from any app, the button on `voice/panel.html`, or "stop listening".
   A chime and a spoken line say which state you are in. Muted, the mic sends silence, so a
   pending yes/no can only end as a no. Unmuting needs the key or the button.
-- **Brain / vision backends**: a local Claude Code login (`claude -p`, personal use) or the
-  Anthropic API (`ANTHROPIC_API_KEY`).
 
 ## Build it your way
 
-Every part is swappable in `.env`:
+Every part is one line in `.env`:
 
 | Part | Options | Status |
 |---|---|---|
-| Ears | AssemblyAI Universal-Streaming (`voice/iris.py`) or the AssemblyAI Voice Agent API (`voice/client.py`) | both run; demo on streaming |
-| Brain | Claude (`BRAIN_BACKEND=cli` Claude Code login, `=api` Anthropic API) or `BRAIN_BACKEND=openai`: any model on the **AssemblyAI LLM Gateway** (Claude, GPT, Gemini, Qwen, DeepSeek… 47 listed) or any OpenAI-compatible endpoint (Ollama, vLLM) via `BRAIN_BASE_URL` / `BRAIN_API_KEY` / `BRAIN_MODEL` | Claude: demo. Gateway: tested with `qwen3.5-4b-32k-fast` (0.85 s per plan); other models need a plan that includes them |
-| Decisions | Kev locally, or **Jev** (TypeSafe, cloud) through the same `/v1/systemone` API: `SYSTEMONE_URL`, `SYSTEMONE_KEY` | Kev measured; Jev API-compatible, not benchmarked by us |
-| Eyes | Claude vision via Claude Code or the Anthropic API (`VISION_BACKEND=api`) | measured |
-| Hands | any MCP server becomes voice tools; the screen otherwise | Gmail tested |
+| Ears | AssemblyAI Universal-Streaming (`voice/iris.py`) or the AssemblyAI Voice Agent API (`voice/client.py`); your own `ASSEMBLYAI_API_KEY`, or a token from Iris Cloud | both run; demo on streaming |
+| Brain | `IRIS_BRAIN=cloud` (default: Qwen on the Gateway through Iris Cloud), `claude-code` (your Claude Code login), `anthropic` (your API key), `gateway` (your AssemblyAI key, any Gateway model via `BRAIN_MODEL`: Claude, GPT, Gemini, Qwen, DeepSeek… 47 listed), `openai` (any OpenAI-compatible endpoint: Ollama, vLLM) | Qwen: default; Claude: most reliable (see runs below) |
+| Decisions | `IRIS_DECISIONS=auto` (local Kev if it runs, else Jev through Iris Cloud), `kev`, `jev` (your `JEV_KEY`), `cloud`; `SYSTEMONE_URL` overrides | Kev measured; Jev API-compatible, not benchmarked by us |
+| Eyes | Claude vision, on automatically with `IRIS_BRAIN=claude-code` or `anthropic` (`VISION_BACKEND` overrides); none by default | measured with Claude |
+| Hands | any MCP server becomes voice tools; the screen and the keyboard otherwise | Gmail tested |
 | Voice | edge-tts neural voices, or AssemblyAI Voice Agent voices | both run |
 
 ## Measured (26.09, RTX 5060 Ti) — `bench/bench_full.py`
@@ -80,7 +106,9 @@ Every part is swappable in `.env`:
 | Claude vision on unlabeled icon buttons | 10 / 10 | 3.2 s |
 
 The test sets were written by us; action choice was measured on Windows Calculator and local
-test pages.
+test pages. These numbers measure the safety gate and the screen layer with Kev on a local GPU
+and Claude vision; the default cloud setup uses Jev and no vision, and Jev has not been
+benchmarked by us.
 
 ## End-to-end runs (27.09) — `tests/reliability_runs.py`
 
