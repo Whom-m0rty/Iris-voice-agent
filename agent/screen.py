@@ -173,7 +173,13 @@ def open_windows() -> list[str]:
 def resolve_window(name: str, timeout: float = 2) -> auto.WindowControl | None:
     """The window the user means: title match first, then the open window sharing the most
     words with `name` ("Mail" -> "Inbox - ...", "Gmail" -> "Inbox (3) - ... - Gmail - Google Chrome")."""
-    w = find_window(re.escape(name), timeout) if name else None
+    # the app itself before a title that merely mentions it: "Telegram" is the Telegram window
+    # (titled with the chat's name), not an Explorer window showing a "Telegram Desktop" folder
+    named = {x for x in re.findall(r"\w+", name.lower()) if len(x) > 2}
+    apps_named = [w for w in app_windows() if _process_name(w.ProcessId) in named]
+    w = find_window(re.escape(name), timeout if not apps_named else 0) if name else None
+    if apps_named and len(named) <= 2 and (w is None or _process_name(w.ProcessId) not in named):
+        return apps_named[0]
     if w:
         return w
     words = {x for x in re.findall(r"\w+", name.lower()) if len(x) > 2}

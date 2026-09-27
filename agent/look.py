@@ -39,7 +39,9 @@ def popups(window) -> list[str]:
     inner = []
     try:
         for ctrl, _ in auto.WalkControl(window, maxDepth=3):
-            if ctrl.ControlTypeName == "WindowControl" and (ctrl.Name or "").strip() and not ctrl.IsOffscreen:
+            # a Store app's own frame (Calculator inside "Calculator") is not a pop-up
+            if (ctrl.ControlTypeName == "WindowControl" and (ctrl.Name or "").strip() and not ctrl.IsOffscreen
+                    and ctrl.Name.strip() != (window.Name or "").strip()):
                 inner.append(ctrl)
     except Exception:
         pass

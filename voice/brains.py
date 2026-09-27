@@ -62,6 +62,7 @@ class OpenAICompatibleBrain:
         self.model = os.environ.get("BRAIN_MODEL", "qwen3.5-4b-32k-fast")
         self.prompt = prompt
         self.history: list[dict] = []
+        self.on_wait = None                   # called on a rate limit, so the app can tell the user
 
     def warm(self):
         pass
@@ -85,6 +86,8 @@ class OpenAICompatibleBrain:
                 if e.code not in (429, 503) or waited >= 20:
                     self.history.pop()        # the turn did not happen; don't leave it dangling
                     raise
+                if self.on_wait and waited == 0:
+                    self.on_wait()
                 try:
                     pause = float(e.headers.get("Retry-After") or 0)
                 except ValueError:

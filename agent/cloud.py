@@ -97,6 +97,25 @@ def decisions() -> tuple[str, str, str]:
     return CLOUD_URL, device_token(), "jev-latest"
 
 
+def explain_error(e: Exception) -> str:
+    """What to tell a person when Iris Cloud says no: a limit, or no connection."""
+    import urllib.error
+    detail = ""
+    if isinstance(e, urllib.error.HTTPError):
+        try:
+            detail = json.loads(e.read() or b"{}").get("detail", "")
+        except Exception:
+            detail = ""
+        if e.code == 429:
+            if "device" in detail:
+                return ("Iris Cloud has seen too many new computers from this network today, so I can't "
+                        "start. Please try again tomorrow, or use your own key in the settings.")
+            return ("I've reached today's free limit on Iris Cloud. It resets overnight, "
+                    "or you can add your own key in the settings.")
+        return f"Iris Cloud answered with an error, {e.code}. Please try again in a minute."
+    return "I can't reach Iris Cloud. Please check the internet connection and start me again."
+
+
 def describe() -> str:
     url, _, model = decisions()
     return f"brain={brain_mode()} vision={vision_mode()} decisions={model}@{url}"

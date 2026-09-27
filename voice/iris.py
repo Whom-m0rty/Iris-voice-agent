@@ -114,7 +114,7 @@ thing: "your email", "the internet", "YouTube". Instead of scroll: "further down
 "further up". Instead of menu: "the list of choices". Instead of pop-up or dialog: "a box
 has come up asking...". Instead of field: "the box for your password". Never say click,
 tab, icon, cursor or URL.
-Say what happened to the person's things: "I opened your email", "Peter's message is on
+Say what happened to the person's things: "I opened your email", "the message is on
 the screen now", "I pressed Send".
 
 Every reply is ONE JSON object and nothing else:
@@ -184,10 +184,58 @@ Rules:
 - Windows open right now: {WINDOWS}"""
 
 
+# Small models (the keyless cloud brain) copy examples far better than they follow rules.
+SMALL_MODEL_EXAMPLES = """
+Examples (the JSON you send; "..." = the rest of the plan):
+USER: Open the calculator
+{"say": "Opening the calculator.", "tool": {"name": "open_app", "args": {"name": "calculator"}}}
+USER: What is 12 plus 30?   (the Calculator is open)
+{"say": "", "tool": {"name": "do_task", "args": {"goal": "compute 12 + 30", "window": "Calculator", "steps": [{"do": "press the digit 1"}, {"do": "press the digit 2"}, {"do": "press the Plus button"}, {"do": "press the digit 3"}, {"do": "press the digit 0"}, {"do": "press the Equals button"}]}}}
+USER: What's on my screen?
+{"say": "", "tool": {"name": "describe_screen", "args": {"window": "", "detail": "brief"}}}
+USER: Tell Anna I'm on my way   (Telegram is open with Anna's chat)
+{"say": "", "tool": {"name": "do_task", "args": {"goal": "send Anna the message", "window": "Telegram", "steps": [{"do": "type the message into the message box", "text": "I'm on my way"}, {"do": "click the Send button"}]}}}
+USER: Put tea in my basket
+{"say": "Looking for tea.", "tool": {"name": "browser_search", "args": {"site": "amazon.it", "query": "tea"}}}
+USER: Did anyone write to me today?   (no mail__ tools in the list above)
+{"say": "Let me open your email.", "tool": {"name": "browser_open", "args": {"url": "https://mail.google.com/mail/u/0/#inbox"}}}
+then, after it opened: {"say": "", "tool": {"name": "read_screen", "args": {"window": "Gmail"}}}
+then read out the newest message from the TOOL RESULT: who wrote, the subject, and when.
+Never say you did something (opened, sent, pressed, added, checked, found) unless a TOOL RESULT
+in this turn says so: without a tool call nothing happens on the computer."""
+
+MAIL_WITHOUT_TOOLS = """
+- There are no mail__ tools: to check email, open Gmail in the browser (browser_open
+  https://mail.google.com/mail/u/0/#inbox) and read it with read_screen; the newest message is
+  at the top of the inbox. Never answer about email without reading it first. Sending email
+  this way is not possible: say so."""
+
 from brains import extract_json, normalize_tool  # noqa: E402  shared with the other brains
 
 # the brain said it would act ("let me check") but sent no tool
-PROMISED = re.compile(r"\b(let me|i'll|i will|i'm going to|checking|looking|one moment|opening)\b", re.I)
+# ("you are looking at the calculator" is an answer, not a promise)
+PROMISED = re.compile(r"\b(let me|i'll|i will|i'm going to|i am going to|i'm (checking|looking|opening)|"
+                      r"one moment)\b|^\W*(checking|looking|opening)\b", re.I)
+READ_ONLY_TOOLS = {"describe_screen", "read_screen"}
+TELL = re.compile(r"\b(tell|send|reply)\b", re.I)
+SEND_STEP = re.compile(r"\b(send|submit|post|enter)\b", re.I)
+# ...or said it already had, with no tool run in this turn ("I have opened the calculator")
+CLAIMED = re.compile(r"\b(i(?:'ve| have)? (?:just |now )?(?:opened|sent|pressed|added|typed|clicked|searched|"
+                     r"checked|found|started|closed|put|read|looked)|(?:is|are) (?:now )?(?:open|on the front|"
+                     r"in front|sent|added)|has been (?:opened|sent|added))\b", re.I)
+# questions about the screen: answered from the screen itself, never from the window list
+SCREEN_Q = re.compile(r"\b(what'?s|what is) (on )?(my|the) screen\b|\bwhere am i\b|\bwhat can i do here\b|"
+                      r"\bi'?m lost\b|\bwhat happened\b|\bwhat do i see\b", re.I)
+
+
+def mail_connected() -> bool:
+    """Gmail tools only when a Gmail login is stored (voice/mcp_servers/mail.py login):
+    a fresh keyless install must not be offered tools that can only fail."""
+    try:
+        import keyring
+        return bool(keyring.get_password("voice-agent-gmail", os.environ.get("MAIL_ADDRESS") or "default"))
+    except Exception:
+        return False
 
 
 class Brain:
@@ -330,7 +378,9 @@ class Voice:
 class Iris:
     def __init__(self, emit=print, mcp_servers=None, mic=None):
         self.emit = emit
-        self.bridge = MCPBridge(MCP_SERVERS if mcp_servers is None else mcp_servers).start()
+        if mcp_servers is None:
+            mcp_servers = {k: v for k, v in MCP_SERVERS.items() if k != "mail" or mail_connected()}
+        self.bridge = MCPBridge(mcp_servers).start()
         self.speaker = Speaker()
         self.voice = Voice(self.speaker)
         self.turns: queue.Queue[str] = queue.Queue()      # finished user turns for the worker
@@ -346,7 +396,15 @@ class Iris:
         self.last_ok = True                               # outcome of the last screen task
         self.muted = False
         self.mute_lock = threading.Lock()
-        self.brain = make_brain(self._prompt())
+        try:
+            self.brain = make_brain(self._prompt())
+        except Exception as e:
+            # no network, or Iris Cloud refused a new device: say so instead of dying in silence
+            self.emit({"kind": "error", "message": f"brain: {e}"})
+            self.voice.say(cloud.explain_error(e))
+            raise SystemExit(f"Iris could not start its brain: {e}")
+        if hasattr(self.brain, "on_wait"):    # rate-limited: the answer may take half a minute
+            self.brain.on_wait = lambda: self.say_async("One moment, I'm a little busy.")
         threading.Thread(target=vision.backend().warm, daemon=True).start()
         threading.Thread(target=self._ticker, daemon=True).start()
 
@@ -355,7 +413,12 @@ class Iris:
     def _prompt(self) -> str:
         tools = "\n".join(f"- {t['name']}({', '.join((t['parameters'].get('properties') or {}).keys())}): "
                           f"{t['description']}" for t in self.bridge.voice_tools())
-        return (BRAIN_PROMPT.replace("{TOOLS}", tools or "(no direct tools)")
+        prompt = BRAIN_PROMPT
+        if not any(n.startswith("mail__") for n in self.bridge.tools):
+            prompt = prompt.replace("\n- Stored login names:", MAIL_WITHOUT_TOOLS + "\n- Stored login names:")
+        if cloud.brain_mode() not in ("claude-code", "anthropic"):
+            prompt += "\n" + SMALL_MODEL_EXAMPLES
+        return (prompt.replace("{TOOLS}", tools or "(no direct tools)")
                 .replace("{SECRETS}", ", ".join(vault.names()) or "none")
                 .replace("{WINDOWS}", "; ".join(screen.open_windows()[:15]))
                 .replace("{PAUSE}", f"{self.merge_s:.1f}"))
@@ -577,6 +640,13 @@ class Iris:
         window = screen.resolve_window(args.get("window", "")) if args.get("window") else None
         if args.get("window") and window is None:
             return f"{args['window']} is not open on the screen."
+        steps = [s for s in (args.get("steps") or []) if isinstance(s, dict) and s.get("do")]
+        if (steps and steps[-1].get("text") and TELL.search(args.get("goal", ""))
+                and not any(SEND_STEP.search(s["do"]) for s in steps)):
+            # "tell Maksim ..." planned as typing only (small models): the message would sit
+            # unsent in the box. Sending still asks the user first.
+            steps.append({"do": "click the Send button"})
+            args = {**args, "steps": steps}
         self.emit({"kind": "task_start", "goal": args.get("goal"), "window": args.get("window"),
                    "steps": args.get("steps")})
         # progress lines are spoken in the background: the hands never wait for the voice
@@ -622,6 +692,17 @@ class Iris:
         acted = False
         nudged = False
         failed_tasks = 0
+        looked: set[tuple[str, str]] = set()
+        if SCREEN_Q.search(text):
+            # look first and hand the brain the facts in the same message: a small model answers
+            # "what's on my screen?" from the window list otherwise (and it saves a round trip)
+            detail = ("actions" if re.search(r"what can i do", text, re.I) else
+                      "lost" if re.search(r"lost|what happened", text, re.I) else "brief")
+            args = {"window": "", "detail": detail}
+            result = self.run_tool("describe_screen", args)
+            acted = True
+            looked.add(("describe_screen", detail))
+            message += f"\nTOOL RESULT describe_screen: {result}\nAnswer from this TOOL RESULT only."
         for _ in range(8):                # a few tool rounds per user turn
             try:
                 out, ms = self.brain.ask(message)
@@ -643,11 +724,32 @@ class Iris:
             out["tool"] = normalize_tool(out.get("tool"))
             self.emit({"kind": "brain", "ms": round(ms), "out": out})
             tool = None if refused else out.get("tool")   # after a "no", no more actions this turn
+            # the same look again with nothing done in between (small models loop): answer instead
+            look_key = (tool["name"], (tool.get("args") or {}).get("detail") or "") if tool else None
+            if tool and tool["name"] in READ_ONLY_TOOLS:
+                if look_key in looked:
+                    tool = out["tool"] = None
+                    self.emit({"kind": "repeat_look_dropped"})
+                else:
+                    looked.add(look_key)
+            elif tool:
+                looked.clear()                # the screen may change: looking again is fine
             if not tool and not refused and not nudged and PROMISED.search(out.get("say") or ""):
                 nudged = True             # "let me check" with no tool: ask once for the tool call
                 message = ("You said you would do something but sent no tool. Reply again with the "
-                           "tool call, or tell the user plainly that you can't do it.")
+                           "tool call, or tell the user plainly that you can't do it. Answers about the "
+                           f"screen or a result come from a tool, never from you. The user said: {text}")
                 continue
+            if not tool and not acted and CLAIMED.search(out.get("say") or ""):
+                # "I have opened the calculator" with no tool run: nothing happened, and a blind
+                # user cannot see that. Ask for the tool call; never speak the false claim.
+                self.emit({"kind": "claim_without_tool", "say": out.get("say")})
+                if not nudged:
+                    nudged = True
+                    message = ("No tool ran in this turn, so nothing you said happened. Reply again "
+                               f"with the tool call that does it. The user said: {text}")
+                    continue
+                out["say"] = "Sorry, I didn't manage to do that. Could you say it again?"
             if not (out.get("say") or tool):
                 if not nudged:
                     nudged = True         # an empty reply: ask once more instead of going silent
@@ -732,10 +834,20 @@ class Iris:
 
     async def listen_forever(self):
         """Reconnect the ears if the stream drops, so Iris never goes deaf."""
+        import urllib.error
+        told = False
         while True:
             try:
                 await self.listen()
                 return                        # scripted mic finished
+            except urllib.error.HTTPError as e:
+                # Iris Cloud refused a speech token (daily limit): retrying every second would only
+                # hammer it while the user hears nothing. Say it once, then try again slowly.
+                self.emit({"kind": "error", "message": f"speech token refused ({e.code}); retrying in 60 s"})
+                if not told:
+                    told = True
+                    self.say(cloud.explain_error(e))
+                await asyncio.sleep(60)
             except (websockets.ConnectionClosed, OSError) as e:
                 self.emit({"kind": "error", "message": f"speech stream dropped ({e}); reconnecting"})
                 await asyncio.sleep(1)

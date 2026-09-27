@@ -51,7 +51,15 @@ RAW = os.path.join(RESULTS, "raw_reliability")
 SUMMARY = os.path.join(RESULTS, "reliability_runs.jsonl")
 GATEWAY_MODEL = os.environ.get("GATEWAY_MODEL", "qwen3.5-4b-32k-fast")
 BRAINS = {"claude": ("", {}),
-          "gateway": ("gateway_", {"BRAIN_BACKEND": "openai", "BRAIN_MODEL": GATEWAY_MODEL})}
+          "gateway": ("gateway_", {"BRAIN_BACKEND": "openai", "BRAIN_MODEL": GATEWAY_MODEL}),
+          # the keyless default: Iris Cloud brain + Jev decisions + cloud STT token, no vision
+          "cloud": ("cloud_", {"IRIS_BRAIN": "cloud", "IRIS_DECISIONS": "cloud"})}
+# a judge's machine has none of these: the cloud runs remove them from the child's environment
+CLOUD_DROP = ("ASSEMBLYAI_API_KEY", "VISION_BACKEND", "BRAIN_BACKEND", "BRAIN_MODEL", "BRAIN_BASE_URL",
+              "BRAIN_API_KEY", "SYSTEMONE_URL", "SYSTEMONE_KEY", "JEV_KEY", "ANTHROPIC_API_KEY",
+              "CLAUDE_CODE_OAUTH_TOKEN", "MAIL_ADDRESS")
+MAIL_TRUTH = re.compile(os.environ.get("MAIL_TRUTH", r"m0rty|Peter|Saturday|lunch"), re.I)
+MAX_TG_SENT = 3
 CACHE = os.path.join(tempfile.gettempdir(), "iris_reliability_wav")
 SPEAKER_VOICE = os.environ.get("TEST_SPEAKER_VOICE", "en-US-GuyNeural")   # not Iris's own voice
 EXPECT_MAIL_FROM = os.environ.get("EXPECT_MAIL_FROM", "m0rty")
@@ -95,6 +103,20 @@ def case_script(case: str, n: int):
             # always "No, wait", whatever is asked (the Claude runs never asked about adding)
             return "No, wait.", ("" if MONEY.search(q) else "non-checkout question -> no, wait")
         return ["Put vitamin D in my basket.", "Now check out."], answer
+    if case == "calc":
+        return ["Open the calculator.", "What is 12 plus 30?"], lambda q, app: ("No.", "unexpected question")
+    if case == "tgopen":
+        def answer(q, app):
+            # yes only when the question names the contact as the recipient, never an email
+            ok = (bool(re.search(rf"\bto\b[^?]*({EXPECT_TG_CHAT})", q, re.I))
+                  and not re.search(r"e-?mail", q, re.I))
+            return ("Yes." if ok else "No."), ("" if ok else
+                                                f"RECIPIENT NOT NAMED (window '{portable_tg_title()}') -> no")
+        return ["Open Telegram.", f"Tell {TG_CONTACT} I'm running late, test {n}."], answer
+    if case == "gmailweb":
+        return ["Did anyone write to me today?"], lambda q, app: ("No.", "question in a read-only case")
+    if case == "screen":
+        return ["What's on my screen?"], lambda q, app: ("No.", "unexpected question")
     raise SystemExit(f"unknown case {case}")
 
 
@@ -236,7 +258,7 @@ def child(case: str, n: int):
             out({"kind": "h_brain_raw", "text": text[:1500]})
         return r
     iris.extract_json = extract_json_logged
-    if os.environ.get("BRAIN_BACKEND") == "openai":
+    if os.environ.get("BRAIN_BACKEND") == "openai" or os.environ.get("IRIS_BRAIN") in ("cloud", "gateway", "openai"):
         import brains
         parse_gw = brains.extract_json
 
@@ -246,6 +268,20 @@ def child(case: str, n: int):
                 out({"kind": "h_brain_raw", "text": (text or "")[:1500]})
             return r
         brains.extract_json = extract_json_gw
+
+    # count rate limits and other HTTP errors of the cloud calls (brain, decisions, STT token)
+    import urllib.error
+    import urllib.request
+    urlopen = urllib.request.urlopen
+
+    def urlopen_logged(req, *a, **kw):
+        url = getattr(req, "full_url", str(req))
+        try:
+            return urlopen(req, *a, **kw)
+        except urllib.error.HTTPError as e:
+            out({"kind": "h_http", "code": e.code, "url": url.split("?")[0][-40:]})
+            raise
+    urllib.request.urlopen = urlopen_logged
 
     def watchdog():
         out({"kind": "h_fail", "where": "watchdog timeout (Iris hung)",
@@ -298,6 +334,13 @@ def analyse(case: str, n: int, events: list[dict], env_note: str = "") -> dict:
                            if re.sub(r"\s", "", e["text"]) not in ('{"say":"","tool":null}',)]
     r["silent_turns"] = sum(1 for b in brains if not (b.get("out") or {}).get("say")
                             and not (b.get("out") or {}).get("tool"))
+    http = [e for e in events if e["kind"] == "h_http"]
+    r["http_errors"] = [f"{e['code']} {e['url']}" for e in http]
+    r["n429"] = sum(e["code"] == 429 for e in http)
+    r["keys"] = [f"{s.get('action')} ({s.get('target')})" for s in steps if s.get("via") == "keys"]
+    r["brain_ms_list"] = [b.get("ms", 0) for b in brains]
+    r["mcp"] = [f"{m.get('tool')}: {str(m.get('result', ''))[:120]}" for m in mcp]
+    finals = " ".join(a["text"] for a in final)
     if fails:
         r["where"] = "; ".join(f"{f['where']}: {f.get('text', '')}" for f in fails)
     elif case == "gmail":
@@ -312,12 +355,34 @@ def analyse(case: str, n: int, events: list[dict], env_note: str = "") -> dict:
                       f"reply not sent: {[m.get('result') for m in mcp][-2:]}")
         if not read:
             r["where"] += (" | " if r["where"] else "") + "newest email was not read out (no read_email)"
-    elif case == "telegram":
+    elif case == "calc":
+        opened = any(t["name"] == "open_app" for t in tools)
+        r["ok"] = opened and bool(re.search(r"\b42\b|forty[- ]two", finals, re.I))
+        r["where"] = ("" if r["ok"] else "open_app not used" if not opened else
+                      f"42 not said: {r['final_say'][:150]}")
+    elif case == "gmailweb":
+        web = [t["name"] for t in tools if t["name"] in ("browser_open", "browser_search", "read_screen",
+                                                           "describe_screen", "do_task", "switch_to", "open_app")]
+        sent = [m for m in mcp if re.search(r"send|reply", m.get("tool", "")) and m.get("ok")]
+        r["ok"] = bool(web) and bool(MAIL_TRUTH.search(finals)) and not sent
+        r["where"] = ("" if r["ok"] else "SENT MAIL?!" if sent else "no browser/screen tool" if not web else
+                      f"newest mail not read out: {r['final_say'][:150]}")
+    elif case == "screen":
+        used = any(t["name"] in ("describe_screen", "read_screen") for t in tools)
+        r["ok"] = used and bool(re.search(r"calculat", finals, re.I))
+        r["where"] = ("" if r["ok"] else "no describe/read_screen" if not used else
+                      f"did not say it is the calculator: {r['final_say'][:150]}")
+    elif case in ("telegram", "tgopen"):
         send_q = [c for c in confirms if c["question"].lower().startswith("send")]
         said_yes = [a for a in answers if a["text"].startswith("Yes") and a["question"].lower().startswith("send")]
         last = done[-1] if done else None
-        clicked_send = any(s["t"] > send_q[0]["t"] and re.search(r"send", s.get("target", ""), re.I)
+        # with vision: a click on the Send button; without (cloud): Enter pressed as a keyboard step
+        clicked_send = any(s["t"] > send_q[0]["t"] and re.search(r"send", f"{s.get('target', '')} {s.get('action', '')}", re.I)
                            for s in steps) if send_q else False
+        if case == "tgopen":
+            r["open_app"] = [m["result"] for m in mcp if m.get("tool") == "screen__open_app"]
+            if any("do-not-touch" in x or "Roaming" in x for x in r["open_app"]):
+                r["open_app_note"] = "touched the protected Telegram?!"
         r["ok"] = bool(said_yes and clicked_send and last and last.get("ok")
                        and "NOT sent" not in last.get("summary", ""))
         r["do_tasks"] = sum(t["name"] == "do_task" for t in tools)
@@ -359,7 +424,35 @@ def prepare(case: str) -> str:
     """Put the app in its start state. Returns a note (empty = fine)."""
     sys.path.insert(0, os.path.join(ROOT, "agent"))
     import screen
-    if case == "telegram":
+    if case == "calc":
+        # closed first, so "Open the calculator" really starts it (open_app, not just switch_to)
+        for w in screen.app_windows():
+            if re.match(r"^(Calculator|Калькулятор)$", w.Name or ""):
+                w.GetWindowPattern().Close()
+                time.sleep(1.0)
+        return ""
+    if case == "screen":
+        w = screen.find_window("^(Calculator|Калькулятор)$")
+        if w is None:
+            subprocess.Popen(["explorer.exe", r"shell:AppsFolder\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"])
+            time.sleep(3)
+            w = screen.find_window("^(Calculator|Калькулятор)$")
+        if w is None:
+            return "ENV: no Calculator"
+        screen.bring_to_front(w)
+        return ""
+    if case == "amazon" and os.environ.get("AMAZON_NEW_TAB", "1") == "1":
+        # a new tab of our own: the tabs that were open stay as they were
+        w = amazon_window()
+        if w is None:
+            return "ENV: no Amazon window"
+        screen.bring_to_front(w)
+        time.sleep(0.3)
+        screen.send_keys("{Ctrl}t", waitTime=0.5)
+        screen.type_keys(AMAZON_START)
+        screen.send_keys("{Enter}", waitTime=5)
+        return ""
+    if case in ("telegram", "tgopen"):
         wins = [w for w in screen.app_windows() if PORTABLE_TG.lower() in screen.process_path(w.ProcessId).lower()]
         if not wins:
             return "ENV: portable Telegram not open"
@@ -411,6 +504,53 @@ def amazon_window():
     return None
 
 
+def chrome_tabs() -> dict:
+    """{window handle: number of tabs} of every Chrome window."""
+    sys.path.insert(0, os.path.join(ROOT, "agent"))
+    import screen
+    import uiautomation as auto
+    out = {}
+    for w in screen.app_windows():
+        if screen._process_name(w.ProcessId) == "chrome":
+            out[w.NativeWindowHandle] = [c for c, _ in auto.WalkControl(w, maxDepth=12)
+                                         if c.ControlTypeName == "TabItemControl"]
+    return out
+
+
+def close_new_tabs(before: dict) -> list[str]:
+    """Close the tabs opened during a run (Chrome appends them on the right), nothing else."""
+    sys.path.insert(0, os.path.join(ROOT, "agent"))
+    import screen
+    closed = []
+    now = chrome_tabs()
+    for hwnd, tabs in now.items():
+        extra = len(tabs) - len(before.get(hwnd, tabs))
+        if hwnd not in before:
+            closed.append(f"NEW WINDOW left open: {[t.Name for t in tabs]}")
+            continue
+        for tab in reversed(tabs[len(tabs) - extra:] if extra > 0 else []):
+            try:
+                tab.GetSelectionItemPattern().Select()
+                time.sleep(0.4)
+                w = screen.auto.ControlFromHandle(hwnd)
+                screen.bring_to_front(w)
+                screen.send_keys("{Ctrl}w", waitTime=0.5)
+                closed.append(tab.Name)
+            except Exception as e:
+                closed.append(f"could not close {tab.Name}: {e}")
+    return closed
+
+
+def calc_display() -> str:
+    sys.path.insert(0, os.path.join(ROOT, "agent"))
+    import screen
+    w = screen.find_window("^(Calculator|Калькулятор)$")
+    if w is None:
+        return "(no Calculator)"
+    m = re.search(r"Display is ([^|]+)", " | ".join(screen.snapshot(w).texts + [e.name for e in screen.snapshot(w).elements.values()]))
+    return m.group(1).strip() if m else "?"
+
+
 def basket(case: str) -> str:
     if case != "amazon":
         return ""
@@ -432,6 +572,13 @@ def run_one(case: str, n: int, brain: str = "claude"):
     os.makedirs(RAW, exist_ok=True)
     prefix, brain_env = BRAINS[brain]
     summary = summary_file(brain)
+    if case == "tgopen" and os.path.exists(summary):
+        sent = sum(1 for ln in open(summary, encoding="utf-8") if ln.strip()
+                   and json.loads(ln)["case"] == "tgopen" and json.loads(ln).get("ok"))
+        if sent >= MAX_TG_SENT:
+            print(f"ENV: {sent} test messages already sent, the limit is {MAX_TG_SENT}")
+            return
+    tabs_before = chrome_tabs() if case in ("amazon", "gmailweb") else None
     env_note = prepare(case)
     if env_note.startswith("ENV:"):
         print(env_note)
@@ -439,6 +586,9 @@ def run_one(case: str, n: int, brain: str = "claude"):
     before = basket(case)
     raw_path = os.path.join(RAW, f"{prefix}{case}_{n}.log")
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", **brain_env}
+    if brain == "cloud":
+        for k in CLOUD_DROP:
+            env.pop(k, None)
     t = time.time()
     # the log is written live, so a hung run still leaves its events behind
     with open(raw_path, "w", encoding="utf-8") as f, open(raw_path + ".err", "w", encoding="utf-8") as ferr:
@@ -462,6 +612,12 @@ def run_one(case: str, n: int, brain: str = "claude"):
     r["date"] = time.strftime("%Y-%m-%d %H:%M")
     if case == "amazon":
         r["basket_before"], r["basket_after"] = before, basket(case)
+    if case == "calc":
+        r["calc_display"] = calc_display()
+        if r["ok"] and r["calc_display"] != "42":
+            r["ok"], r["where"] = False, f"said 42 but the display shows {r['calc_display']}"
+    if tabs_before is not None:
+        r["tabs_closed"] = close_new_tabs(tabs_before)
     with open(summary, "a", encoding="utf-8") as f:
         f.write(json.dumps(r, ensure_ascii=False) + "\n")
     print(json.dumps(r, ensure_ascii=False, indent=1))
@@ -516,6 +672,22 @@ def report(brain: str = "claude"):
               f"{statistics.median(tt) if tt else '-'} | {max(tt) if tt else '-'} | "
               f"{statistics.median(it) if it else '-'} | "
               f"{sum(r.get('kev', 0) for r in rs)} / {sum(r.get('vision', 0) for r in rs)} |")
+    if brain == "cloud":
+        print("\n| case | success | median total, s | median Iris-only, s | median brain call, ms | "
+              "broken replies | 429s | keyboard fallbacks |")
+        print("|---|---|---|---|---|---|---|---|")
+        for case in ("calc", "tgopen", "amazon", "gmailweb", "screen"):
+            rs = [r for r in rows if r["case"] == case]
+            if not rs:
+                continue
+            tt = [r["total_s"] for r in rs if r.get("total_s") is not None]
+            it = [r["iris_s"] for r in rs if r.get("iris_s") is not None]
+            bm = [m for r in rs for m in r.get("brain_ms_list", [])]
+            print(f"| {case} | {sum(r['ok'] for r in rs)}/{len(rs)} | "
+                  f"{statistics.median(tt) if tt else '-'} | {statistics.median(it) if it else '-'} | "
+                  f"{round(statistics.median(bm)) if bm else '-'} | "
+                  f"{sum(len(r.get('broken_replies', [])) for r in rs)} | {sum(r.get('n429', 0) for r in rs)} | "
+                  f"{sum(len(r.get('keys', [])) for r in rs)} |")
 
 
 if __name__ == "__main__":
