@@ -25,6 +25,7 @@ from websockets.sync.client import connect  # noqa: E402
 import overlay_panel  # noqa: E402
 
 SHOW_PANEL = os.environ.get("OVERLAY_PANEL", "1") != "0"
+SHOW_CURSOR = os.environ.get("OVERLAY_CURSOR", "1") != "0"   # 0: frames and clicks only, no ghost cursor
 
 
 URL = "ws://127.0.0.1:8770"
@@ -166,7 +167,7 @@ class Overlay(QWidget):
             self._draw_ripple(p, center, time.time() - born, color)
         if SHOW_PANEL:
             overlay_panel.draw(p, self.panel, self.width(), self.height(), self.phase)
-        if self.visible_cursor:
+        if self.visible_cursor and SHOW_CURSOR:
             self._draw_cursor(p)
         if self.muted:
             self._draw_muted(p)
