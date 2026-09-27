@@ -138,6 +138,9 @@ def interpret_confirmation(said: str, question: str) -> str:
     return choice
 
 
+# plan steps that type a query, not the message itself ("search for Maksim", "find the chat")
+SEARCH_STEP = re.compile(r"\b(search|find|look ?up|filter|address bar|go to)\b", re.I)
+
 class Agent:
     def __init__(self, say: Callable[[str], None], confirm: Callable[[str], str]):
         """say(text): speak to the user. confirm(question) -> what the user answered."""
@@ -229,8 +232,8 @@ class Agent:
                 self.before_step(item)
                 if self.cancel.is_set():
                     break
-            if item.get("text"):
-                self._typed = item["text"]
+            if item.get("text") and not SEARCH_STEP.search(item["do"]):
+                self._typed = item["text"]     # the message; a search box query is not one
             self.goal = goal
             r = self.run(item["do"], window, item.get("text"), max_actions=1, parent_goal=goal,
                          secret=item.get("secret"))

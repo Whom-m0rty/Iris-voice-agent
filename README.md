@@ -82,6 +82,28 @@ Every part is swappable in `.env`:
 The test sets were written by us; action choice was measured on Windows Calculator and local
 test pages.
 
+## End-to-end runs (27.09) — `tests/reliability_runs.py`
+
+Whole voice loop on real services: synthesized speech into AssemblyAI streaming, the brain,
+Gmail over MCP, Kev and Claude vision on the screen, spoken confirmations. Only the microphone
+is replaced.
+
+| Brain | Amazon: basket, checkout, "No, wait" | Gmail: read, reply, "Yes" | Telegram | Brain reply (median) |
+|---|---|---|---|---|
+| Claude (Claude Code) | **5 / 5**, nothing bought | reply reached the right person 5 / 5 | 0 / 1 (picked the wrong chat, asked, stopped on "no") | 2.7 s |
+| AssemblyAI LLM Gateway, `qwen3.5-4b-32k-fast` | 1 / 5 | 0 / 5 | 0 / 3 | **0.8 s** |
+
+> **What these runs are for.** They show that the whole pipeline works end to end, and they
+> give anyone who installs Iris a way to try it on their own machine. They are not a claim of
+> production reliability. Success depends mostly on the brain: a 4B model on the Gateway (the
+> only one our hackathon account could use) is fast but often sends broken or empty replies;
+> use Claude, or a larger Gateway model if your AssemblyAI plan includes one. Details, failure
+> points and fixes: `bench/results/reliability_2026-09-27.md`,
+> `bench/results/reliability_gateway_2026-09-27.md`. The failures found here are now handled:
+> broken JSON is repaired, empty replies and "let me check" without a tool are asked again,
+> rate limits back off, two failed screen tasks stop the turn, and a name is never accepted as
+> an email address (`tests/brain_robustness_test.py`).
+
 ## Run
 
 Windows 10/11, Python 3.12+, an NVIDIA GPU with ~10 GB free for Kev.

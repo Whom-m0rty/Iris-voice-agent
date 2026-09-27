@@ -15,3 +15,4 @@ bench/results_kev-latest.json
 protected_apps.txt
 iris_prefs.json
 docs/assets/src/
+bench/results/raw_reliability/

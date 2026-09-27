@@ -134,7 +134,9 @@ def reply(email_id: str, text: str) -> str:
 
 @mcp.tool(annotations=SEND)
 def send_email(to: str, subject: str, text: str) -> str:
-    """Send a new email."""
+    """Send a new email. `to` must be an email address (name@example.com), not a name."""
+    if "@" not in to:
+        return f"ERROR: '{to}' is not an email address. Ask the user for the address; for a messenger, use the screen."
     mime = EmailMessage()
     mime["To"], mime["Subject"] = to, subject
     mime.set_content(text)

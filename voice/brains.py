@@ -12,6 +12,7 @@
 """
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -20,11 +21,36 @@ GATEWAY = "https://llm-gateway.assemblyai.com/v1"
 
 
 def extract_json(text: str) -> dict:
-    start = (text or "").find("{")
-    try:
-        return json.JSONDecoder().raw_decode(text[start:])[0] if start >= 0 else {"say": (text or "").strip(), "tool": None}
-    except ValueError:
-        return {"say": "", "tool": None}
+    """The model's JSON reply. Small models drop a closing brace or wrap the JSON in prose,
+    so close it and try again, and at worst keep the "say" text rather than go silent."""
+    text = text or ""
+    start = text.find("{")
+    if start < 0:
+        return {"say": text.strip(), "tool": None}
+    body = text[start:]
+    for extra in range(4):
+        try:
+            out = json.JSONDecoder().raw_decode(body + "}" * extra)[0]
+            return out if isinstance(out, dict) else {"say": str(out), "tool": None}
+        except ValueError:
+            continue
+    say = re.search(r'"say"\s*:\s*"((?:[^"\\]|\\.)*)"', body)
+    return {"say": json.loads(f'"{say.group(1)}"') if say else "", "tool": None}
+
+
+def normalize_tool(tool) -> dict | None:
+    """{"name": ..., "args": {...}} from whatever the model sent: a bare tool name, or the
+    arguments next to the name instead of under "args"."""
+    if not tool:
+        return None
+    if isinstance(tool, str):
+        return {"name": tool, "args": {}}
+    if not isinstance(tool, dict) or not tool.get("name"):
+        return None
+    args = tool.get("args")
+    if not isinstance(args, dict):
+        args = {k: v for k, v in tool.items() if k not in ("name", "args")}
+    return {"name": str(tool["name"]), "args": args}
 
 
 class OpenAICompatibleBrain:
@@ -49,14 +75,22 @@ class OpenAICompatibleBrain:
         req = urllib.request.Request(f"{self.base}/chat/completions", json.dumps(body).encode(),
                                      {"Authorization": auth, "Content-Type": "application/json"})
         t = time.perf_counter()
-        for attempt in range(4):              # free tiers rate-limit (HTTP 429): back off and retry
+        waited = 0.0
+        while True:                           # free tiers rate-limit (HTTP 429): back off and retry
             try:
                 with urllib.request.urlopen(req, timeout=60) as r:
                     reply = json.load(r)["choices"][0]["message"]["content"] or ""
                 break
             except urllib.error.HTTPError as e:
-                if e.code != 429 or attempt == 3:
+                if e.code not in (429, 503) or waited >= 20:
+                    self.history.pop()        # the turn did not happen; don't leave it dangling
                     raise
-                time.sleep(1.5 * (attempt + 1))
+                try:
+                    pause = float(e.headers.get("Retry-After") or 0)
+                except ValueError:
+                    pause = 0
+                pause = min(max(pause, 1.5 + waited / 2), 20 - waited)
+                time.sleep(pause)
+                waited += pause
         self.history.append({"role": "assistant", "content": reply})
         return extract_json(reply), (time.perf_counter() - t) * 1000

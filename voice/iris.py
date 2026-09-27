@@ -179,12 +179,10 @@ Rules:
 - Windows open right now: {WINDOWS}"""
 
 
-def extract_json(text: str) -> dict:
-    start = text.find("{")
-    try:
-        return json.JSONDecoder().raw_decode(text[start:])[0] if start >= 0 else {"say": text.strip(), "tool": None}
-    except ValueError:
-        return {"say": "", "tool": None}
+from brains import extract_json, normalize_tool  # noqa: E402  shared with the other brains
+
+# the brain said it would act ("let me check") but sent no tool
+PROMISED = re.compile(r"\b(let me|i'll|i will|i'm going to|checking|looking|one moment|opening)\b", re.I)
 
 
 class Brain:
@@ -485,6 +483,10 @@ class Iris:
         if name not in self.bridge.tools:
             return f"unknown tool {name}"
         bt = self.bridge.tools[name]
+        if bt.name == "send_email" and "@" not in str(args.get("to", "")):
+            # a name is not an address: never ask "send to Maksim Okulov?" and hope
+            return (f"ERROR: '{args.get('to', '')}' is not an email address, so nothing was sent. "
+                    "For Telegram or another messenger use do_task in that app's window.")
         question = describe_mcp_action(bt.name, args)
         if bt.name == "reply" and f"{bt.server}__read_email" in self.bridge.tools:
             # name the recipient: "who is it going to?" is the first thing people ask
@@ -595,6 +597,10 @@ class Iris:
             self.busy_since = time.perf_counter()
             try:
                 self._turn(text)
+            except Exception as e:            # one bad turn must not end the conversation
+                print("turn error:", repr(e))
+                self.emit({"kind": "error", "message": f"turn: {e}"})
+                self.say("Sorry, something went wrong on my side. Tell me what you'd like next.")
             finally:
                 self.busy_since = None
 
@@ -602,33 +608,61 @@ class Iris:
         message = f"USER: {text}"
         refused = False
         acted = False
+        nudged = False
+        failed_tasks = 0
         for _ in range(8):                # a few tool rounds per user turn
             try:
                 out, ms = self.brain.ask(message)
             except Exception as e:
                 self.emit({"kind": "error", "message": f"brain: {e}"})
-                self.speaker.chime(ERROR)
-                # after a tool ran, "say that again" could repeat an action (a second send)
-                self.say("Sorry, I lost my train of thought. " + ("Tell me what you'd like next." if acted
-                                                                  else "Could you say that again?"))
-                break
+                self.say("One moment.")
+                time.sleep(2)
+                try:
+                    out, ms = self.brain.ask(message)
+                except Exception as e2:
+                    self.emit({"kind": "error", "message": f"brain: {e2}"})
+                    self.speaker.chime(ERROR)
+                    # after a tool ran, "say that again" could repeat an action (a second send)
+                    self.say("Sorry, I can't think right now. " + ("Tell me what you'd like next." if acted
+                                                                     else "Could you say that again?"))
+                    break
+            if not isinstance(out, dict):
+                out = {"say": str(out), "tool": None}
+            out["tool"] = normalize_tool(out.get("tool"))
             self.emit({"kind": "brain", "ms": round(ms), "out": out})
             tool = None if refused else out.get("tool")   # after a "no", no more actions this turn
+            if not tool and not refused and not nudged and PROMISED.search(out.get("say") or ""):
+                nudged = True             # "let me check" with no tool: ask once for the tool call
+                message = ("You said you would do something but sent no tool. Reply again with the "
+                           "tool call, or tell the user plainly that you can't do it.")
+                continue
+            if not (out.get("say") or tool):
+                if not nudged:
+                    nudged = True         # an empty reply: ask once more instead of going silent
+                    message = "Your reply was empty. Answer the user now, as JSON with say and tool."
+                    continue
+                out["say"] = "Sorry, I didn't catch that. Could you say it again?"
             if tool and out.get("say") and not (tool.get("args") or {}).get("teach"):
                 threading.Thread(target=self.say, args=(out["say"],), daemon=True).start()
             else:
                 self.say(out.get("say", ""))
             if not tool:
                 break
-            args = tool.get("args") or {k: v for k, v in tool.items() if k != "name"}
-            result = self.run_tool(tool.get("name", ""), args)
+            args = tool["args"]
+            result = self.run_tool(tool["name"], args)
             acted = True
             refused = bool(USER_SAID_NO.search(result))
-            self._outcome_sound(tool.get("name", ""), result, refused)
-            message = f"TOOL RESULT {tool.get('name')}: {result}"
+            self._outcome_sound(tool["name"], result, refused)
+            message = f"TOOL RESULT {tool['name']}: {result}"
             if refused:
                 message += (" The user said no. Do not try again or find another way. "
                             "Reply with tool null and briefly confirm nothing was done.")
+            elif tool["name"] == "do_task" and not self.last_ok:
+                failed_tasks += 1
+                if failed_tasks >= 2:     # two failed tries: stop and say so, don't loop for minutes
+                    refused = True
+                    message += (" This failed twice. Do not try again. Reply with tool null and tell "
+                                "the user briefly what went wrong and what they could do.")
 
     # ---- ears: AssemblyAI streaming STT ------------------------------------------------
 
